@@ -1,0 +1,13 @@
+# Build directories
+/bin/
+/web/
+
+# Zip files
+*.zip
+
+# LÖVE game files
+*.love
+
+# Operating system files
+.DS_Store
+Thumbs.db 
