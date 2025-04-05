@@ -426,18 +426,9 @@ function love.mousepressed(x, y, button)
             return
         end
         
-        -- If we're in the field area (not hand) and not over an "alive" tile
+        -- If we're in the field area (not hand)
         if y < FIELD_HEIGHT then
             local gridX, gridY = screenToGrid(x, y)
-            
-            -- Check if we're over an alive tile (potential card placement spot)
-            local overAliveTile = false
-            for _, tile in ipairs(game.aliveTiles) do
-                if tile.x == gridX and tile.y == gridY then
-                    overAliveTile = true
-                    break
-                end
-            end
             
             -- Check if we clicked on a card in hand
             local cardClicked = false
@@ -450,8 +441,8 @@ function love.mousepressed(x, y, button)
                 end
             end
             
-            -- If not over an alive tile and not dragging a card, start viewport dragging
-            if not overAliveTile and not cardClicked and not game.dragging then
+            -- If not dragging a card, start viewport dragging
+            if not cardClicked and not game.dragging then
                 viewport.dragging = true
                 viewport.lastMouseX = x
                 viewport.lastMouseY = y
