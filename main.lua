@@ -199,13 +199,16 @@ local game = {
     dragging = nil,  -- Card being dragged
     field = {},      -- Placed cards on field
     deck = {         -- Deck of cards
-        count = 24,  -- Number of cards in deck
+        cards = {},  -- Actual card types in the deck
+        count = 0,   -- Number of cards in deck
     },
     discard = {      -- Discard pile
+        cards = {},  -- Actual card types in the discard pile
         count = 0,   -- Number of cards in discard
     },
     invalidPlacement = nil,  -- Tracks invalid placement feedback
-    aliveTiles = {}   -- List of coordinates for "alive" tiles (reachable empty tiles)
+    aliveTiles = {},   -- List of coordinates for "alive" tiles (reachable empty tiles)
+    drawButtonHover = false  -- Track if mouse is hovering over draw button
 }
 
 -- Load assets
@@ -316,18 +319,11 @@ function love.load()
         assets.cards[type] = love.graphics.newImage("img/" .. filename)
     end
     
-    -- Initialize hand with some cards for testing (different tunnel types)
-    table.insert(game.cards, { id = 1, x = 0, y = 0, type = CARD_TYPES.PATH_1_1A, flipped = false })
-    table.insert(game.cards, { id = 2, x = 0, y = 0, type = CARD_TYPES.PATH_1_1B, flipped = false })
-    table.insert(game.cards, { id = 3, x = 0, y = 0, type = CARD_TYPES.PATH_2_1A, flipped = false })
-    table.insert(game.cards, { id = 4, x = 0, y = 0, type = CARD_TYPES.PATH_2_1B, flipped = false })
-    table.insert(game.cards, { id = 5, x = 0, y = 0, type = CARD_TYPES.PATH_3_1A, flipped = false })
-    table.insert(game.cards, { id = 6, x = 0, y = 0, type = CARD_TYPES.PATH_3_1B, flipped = false })
-    table.insert(game.cards, { id = 7, x = 0, y = 0, type = CARD_TYPES.PATH_4_1, flipped = false })
-    table.insert(game.cards, { id = 8, x = 0, y = 0, type = CARD_TYPES.PATH_4_4, flipped = false })
+    -- Generate the deck
+    generateDeck()
     
-    -- Calculate initial positions for cards in hand
-    updateHandPositions()
+    -- Draw initial hand
+    drawCardsFromDeck(8)
     
     -- Generate the initial mineshaft structure
     generateInitialMineshaft()
@@ -404,10 +400,32 @@ function love.update(dt)
             game.invalidPlacement = nil
         end
     end
+    
+    -- Check if mouse is hovering over draw button
+    local mx, my = love.mouse.getPosition()
+    local drawButtonX = SCREEN_WIDTH - 48
+    local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
+    local drawButtonWidth = CARD_WIDTH
+    local drawButtonHeight = 30
+    
+    game.drawButtonHover = pointInRect(mx, my, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
 end
 
 function love.mousepressed(x, y, button)
     if button == 1 then  -- Left mouse button
+        -- Check if draw button was clicked
+        local drawButtonX = SCREEN_WIDTH - 48
+        local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
+        local drawButtonWidth = CARD_WIDTH
+        local drawButtonHeight = 30
+        
+        if pointInRect(x, y, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight) then
+            -- Discard current hand and draw new cards
+            discardHand()
+            drawCardsFromDeck()
+            return
+        end
+        
         -- If we're in the field area (not hand) and not over an "alive" tile
         if y < FIELD_HEIGHT then
             local gridX, gridY = screenToGrid(x, y)
@@ -552,6 +570,22 @@ function love.draw()
     love.graphics.printf("dis-", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
     love.graphics.printf("card", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2, CARD_WIDTH, "center")
     love.graphics.printf("x" .. game.discard.count, SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    
+    -- Draw draw button
+    local drawButtonX = SCREEN_WIDTH - 48
+    local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
+    local drawButtonWidth = CARD_WIDTH
+    local drawButtonHeight = 30
+    
+    if game.drawButtonHover then
+        love.graphics.setColor(0.7, 0.7, 1)  -- Light blue when hovering
+    else
+        love.graphics.setColor(0.5, 0.5, 0.9)  -- Blue normally
+    end
+    love.graphics.rectangle("fill", drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.setFont(assets.smallFont)
+    love.graphics.printf("DRAW", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
     
     -- Draw cards in hand (except the one being dragged)
     for i, card in ipairs(game.cards) do
@@ -901,4 +935,121 @@ function drawField()
         -- Draw a row strip
         love.graphics.rectangle("fill", 0, screenY, FIELD_WIDTH, GRID_CELL_HEIGHT + 1)
     end
+end
+
+-- Generate the deck of cards according to specified quantities
+function generateDeck()
+    -- Clear the deck
+    game.deck.cards = {}
+    
+    -- Add cards according to specified quantities
+    -- Dead ends
+    table.insert(game.deck.cards, CARD_TYPES.PATH_1_1A)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_1_1B)
+    
+    -- Straight and curve paths
+    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1A) end
+    for i = 1, 3 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1B) end
+    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1C) end
+    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1D) end
+    
+    -- T-junctions
+    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1A) end
+    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1B) end
+    
+    -- Cross junction
+    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_4_1) end
+    
+    -- Special cards (one of each)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2A)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2B)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2C)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2D)
+    
+    table.insert(game.deck.cards, CARD_TYPES.PATH_3_3A)
+    table.insert(game.deck.cards, CARD_TYPES.PATH_3_3B)
+    
+    table.insert(game.deck.cards, CARD_TYPES.PATH_4_4)
+    
+    -- Update the count
+    game.deck.count = #game.deck.cards
+    
+    -- Shuffle the deck
+    shuffleDeck()
+end
+
+-- Shuffle the deck of cards
+function shuffleDeck()
+    -- Fisher-Yates shuffle algorithm
+    for i = #game.deck.cards, 2, -1 do
+        local j = love.math.random(i)
+        game.deck.cards[i], game.deck.cards[j] = game.deck.cards[j], game.deck.cards[i]
+    end
+end
+
+-- Discard all cards from hand
+function discardHand()
+    -- Move all cards from hand to discard pile
+    for _, card in ipairs(game.cards) do
+        table.insert(game.discard.cards, card.type)
+        game.discard.count = game.discard.count + 1
+    end
+    
+    -- Clear the hand
+    game.cards = {}
+    
+    -- If deck is empty but discard has cards, shuffle discard into deck
+    if game.deck.count == 0 and game.discard.count > 0 then
+        game.deck.cards = game.discard.cards
+        game.deck.count = game.discard.count
+        game.discard.cards = {}
+        game.discard.count = 0
+        shuffleDeck()
+    end
+end
+
+-- Draw cards from the deck to fill the player's hand
+function drawCardsFromDeck(numCards)
+    -- Default to drawing up to hand capacity if not specified
+    numCards = numCards or (HAND_CARDS_PER_ROW * HAND_ROWS - #game.cards)
+    
+    -- Limit by how many cards are actually available
+    numCards = math.min(numCards, game.deck.count)
+    
+    -- If deck is empty but discard has cards, shuffle discard into deck
+    if numCards > 0 and game.deck.count == 0 and game.discard.count > 0 then
+        game.deck.cards = game.discard.cards
+        game.deck.count = game.discard.count
+        game.discard.cards = {}
+        game.discard.count = 0
+        shuffleDeck()
+        
+        -- Recalculate how many cards we can draw
+        numCards = math.min(numCards, game.deck.count)
+    end
+    
+    -- Draw cards from the deck to the hand
+    for i = 1, numCards do
+        if #game.deck.cards > 0 then
+            local cardType = table.remove(game.deck.cards, 1)
+            game.deck.count = game.deck.count - 1
+            
+            -- Add card to hand
+            table.insert(game.cards, { 
+                id = love.math.random(1000),  -- Generate a unique ID 
+                x = 0, 
+                y = 0, 
+                type = cardType, 
+                flipped = false 
+            })
+        end
+    end
+    
+    -- Update hand positions
+    updateHandPositions()
+end
+
+-- Check if point is within rectangle
+function pointInRect(x, y, rx, ry, rw, rh)
+    return x >= rx and x <= rx + rw and y >= ry and y <= ry + rh
 end 
