@@ -1,6 +1,20 @@
 # Build directories
 /bin/
-/web/
+
+# Include specific web files but exclude generated content
+/web/*.wasm
+/web/*.data
+/web/game.js
+/web/love.js
+/web/love.worker.js
+
+# Keep these important web files
+!/web/index.html
+!/web/server.js
+!/web/package.json
+!/web/run_server.bat
+!/web/README.md
+!/web/theme/
 
 # Zip files
 *.zip

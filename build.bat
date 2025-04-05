@@ -9,7 +9,7 @@ if exist bin\game.love del bin\game.love
 if exist bin\HelloWorld.exe del bin\HelloWorld.exe
 
 REM Create the game.love file
-powershell -Command "Compress-Archive -Force -Path main.lua, conf.lua -DestinationPath game.zip"
+powershell -Command "Compress-Archive -Force -Path main.lua, conf.lua, img -DestinationPath game.zip"
 rename game.zip game.love
 move game.love bin\
 
