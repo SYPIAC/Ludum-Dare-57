@@ -16,6 +16,10 @@ local FIELD_HEIGHT = SCREEN_HEIGHT - HAND_HEIGHT
 local STATUS_BAR_WIDTH = 120  -- Width of the status bar on the right
 local FIELD_WIDTH = SCREEN_WIDTH - STATUS_BAR_WIDTH  -- Visible field width
 
+-- Game field boundaries (defines the playable mine area)
+local GAME_FIELD_WIDTH_EXTENSION = 10  -- How many cells the playable field extends beyond center (each side)
+local GAME_FIELD_DEPTH = 100   -- Maximum mining depth in cells
+
 -- Biome boundaries
 local SURFACE_LEVEL = 0  -- y < SURFACE_LEVEL: surface (brown, no grid)
 local DEEP_MINE_LEVEL = 10  -- y >= DEEP_MINE_LEVEL: deep mine (gray)
@@ -381,8 +385,8 @@ function love.update(dt)
             viewport.offsetX = viewport.offsetX - dx
             viewport.offsetY = viewport.offsetY - dy
             
-            -- Restrict horizontal scrolling to +/-10 cells
-            local maxHorizontalOffset = 10 * GRID_CELL_SIZE
+            -- Restrict horizontal scrolling to +/-VIEWPORT_MAX_HORIZONTAL cells
+            local maxHorizontalOffset = GAME_FIELD_WIDTH_EXTENSION * GRID_CELL_SIZE
             viewport.offsetX = math.max(-maxHorizontalOffset, math.min(maxHorizontalOffset, viewport.offsetX))
             
             -- Restrict vertical scrolling to prevent seeing too far above surface
@@ -627,10 +631,10 @@ function drawFieldGrid()
     local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
     
     -- Ensure we're not trying to draw too many cells
-    startCol = math.max(-10, startCol)  -- Allow grid crosses to extend 10 cells left
-    endCol = math.min(GRID_COLS + 10, endCol)  -- Allow grid crosses to extend 10 cells right
+    startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow grid crosses to extend GAME_FIELD_WIDTH_EXTENSION cells left
+    endCol = math.min(GRID_COLS + GAME_FIELD_WIDTH_EXTENSION, endCol)  -- Allow grid crosses to extend GAME_FIELD_WIDTH_EXTENSION cells right
     startRow = math.max(SURFACE_LEVEL, startRow)  -- Only draw grid at or below surface
-    endRow = math.min(GRID_ROWS + 100, endRow)  -- Allow for deep scrolling
+    endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)  -- Allow for deep scrolling
     
     -- Draw grid cells with + symbols at corners
     for row = startRow, endRow do
@@ -876,10 +880,10 @@ function drawField()
     local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
     
     -- Ensure we're not trying to draw too many cells
-    startCol = math.max(-10, startCol)  -- Allow some scrolling left (10 cells)
-    endCol = math.min(GRID_COLS + 10, endCol)  -- Allow some scrolling right (10 cells)
+    startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow some scrolling left
+    endCol = math.min(GRID_COLS + GAME_FIELD_WIDTH_EXTENSION, endCol)  -- Allow some scrolling right
     startRow = math.max(-20, startRow)  -- Allow some scrolling up (20 cells)
-    endRow = math.min(GRID_ROWS + 100, endRow)  -- Allow significant scrolling down
+    endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)  -- Allow significant scrolling down
     
     -- Draw the background for each visible row section
     for row = startRow, endRow do
