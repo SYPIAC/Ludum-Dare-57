@@ -1,0 +1,341 @@
+-- UI module for FOREMAN
+-- All rendering functionality
+
+-- Define the UI module
+local ui = {}
+
+-- Constants needed for rendering (imported from main.lua)
+local SCREEN_WIDTH = 520
+local SCREEN_HEIGHT = 800
+local CARD_WIDTH = 48
+local CARD_HEIGHT = 96
+local GRID_CELL_SIZE = CARD_WIDTH
+local GRID_CELL_HEIGHT = CARD_HEIGHT
+local GRID_OFFSET_X = 24
+local GRID_OFFSET_Y = 40
+local GRID_COLS = 10
+local GRID_ROWS = 7
+local HAND_HEIGHT = 200
+local FIELD_HEIGHT = SCREEN_HEIGHT - HAND_HEIGHT
+local STATUS_BAR_WIDTH = 120
+local FIELD_WIDTH = SCREEN_WIDTH - STATUS_BAR_WIDTH
+local GAME_FIELD_WIDTH_EXTENSION = 10
+local GAME_FIELD_DEPTH = 100
+local SURFACE_LEVEL = 0
+local DEEP_MINE_LEVEL = 10
+
+-- Colors
+local COLORS = {
+    background = {0, 0, 0},        -- Black
+    grid_symbol = {0.6, 0.6, 0.6}, -- Light gray for +
+    hand_bg = {0.5, 0.3, 0.2},     -- Brown for hand area
+    status_bar = {0, 0, 0},        -- Black for status bar
+    top_bar = {0.5, 0.3, 0.2},     -- Brown for top bar
+    text = {1, 1, 1},              -- White text
+    highlight = {0.5, 0.5, 0.7, 0.3}, -- Bluish highlight
+    surface = {0.6, 0.4, 0.2},     -- Brown for surface (above ground)
+    deep_mine = {0.3, 0.3, 0.35},  -- Grayish for deep mine
+}
+
+-- Shared reference to game state and assets (will be set from main.lua)
+local game = nil
+local assets = nil
+local viewport = nil
+local DIRECTION = nil
+
+-- Initialize the UI module with references to game state and assets
+function ui.init(gameState, gameAssets, viewportState, directionEnum)
+    game = gameState
+    assets = gameAssets
+    viewport = viewportState
+    DIRECTION = directionEnum
+end
+
+-- Main drawing function
+function ui.draw()
+    -- Set background color
+    love.graphics.setBackgroundColor(unpack(COLORS.background))
+    
+    -- Draw the field with appropriate biome backgrounds
+    ui.drawField()
+    
+    -- Draw the field grid
+    ui.drawFieldGrid()
+    
+    -- Draw cards placed on the field
+    ui.drawFieldCards()
+    
+    -- Draw status bar
+    ui.drawStatusBar()
+    
+    -- Draw hand area background
+    love.graphics.setColor(unpack(COLORS.hand_bg))
+    love.graphics.rectangle("fill", 0, FIELD_HEIGHT, SCREEN_WIDTH, HAND_HEIGHT)
+    
+    -- Draw deck space
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("fill", SCREEN_WIDTH - 96, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.setFont(assets.smallFont)
+    love.graphics.printf("deck", SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.deck.count, SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    
+    -- Draw discard space
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("fill", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.printf("dis-", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
+    love.graphics.printf("card", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.discard.count, SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    
+    -- Draw draw button
+    local drawButtonX = SCREEN_WIDTH - 48
+    local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
+    local drawButtonWidth = CARD_WIDTH
+    local drawButtonHeight = 30
+    
+    if game.drawButtonHover then
+        love.graphics.setColor(0.7, 0.7, 1)  -- Light blue when hovering
+    else
+        love.graphics.setColor(0.5, 0.5, 0.9)  -- Blue normally
+    end
+    love.graphics.rectangle("fill", drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.setFont(assets.smallFont)
+    love.graphics.printf("DRAW", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
+    
+    -- Draw cards in hand (except the one being dragged)
+    for i, card in ipairs(game.cards) do
+        if card ~= game.dragging then
+            ui.drawCard(card)
+        end
+    end
+    
+    -- Draw the card being dragged (on top of everything)
+    if game.dragging then
+        ui.drawCard(game.dragging)
+    end
+    
+    -- DEBUG: Draw card outline to verify grid alignment
+    if game.dragging and love.mouse.getY() < FIELD_HEIGHT then
+        local gridX, gridY = ui.screenToGrid(love.mouse.getX(), love.mouse.getY())
+        local x, y = ui.gridToScreen(gridX, gridY)
+        -- Only show outline if not behind status bar
+        if x + CARD_WIDTH <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
+            -- Check if placement is valid and show appropriate color
+            local isValidPlacement = ui.canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped)
+            if isValidPlacement then
+                love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
+            else
+                love.graphics.setColor(1, 0, 0, 0.5)  -- Red for invalid placement
+            end
+            love.graphics.rectangle("line", x, y, CARD_WIDTH, CARD_HEIGHT)
+        end
+    end
+    
+    -- Draw invalid placement feedback if needed
+    if game.invalidPlacement then
+        local x, y = ui.gridToScreen(game.invalidPlacement.x, game.invalidPlacement.y)
+        love.graphics.setColor(1, 0, 0, game.invalidPlacement.time * 2)  -- Red with fading alpha
+        love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+    end
+    
+    -- Draw top brown bar (always on top)
+    love.graphics.setColor(unpack(COLORS.top_bar))
+    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, 40)
+    
+    -- Debug: draw coordinates info
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(assets.smallFont)
+    local mx, my = love.mouse.getPosition()
+    local gx, gy = ui.screenToGrid(mx, my)
+    love.graphics.print("View: " .. viewport.offsetX .. "," .. viewport.offsetY .. " Mouse: " .. gx .. "," .. gy, 10, 10)
+end
+
+-- Function to draw the status bar
+function ui.drawStatusBar()
+    -- Draw status bar on the right
+    love.graphics.setColor(unpack(COLORS.status_bar))
+    love.graphics.rectangle("fill", SCREEN_WIDTH - STATUS_BAR_WIDTH, 40, STATUS_BAR_WIDTH, FIELD_HEIGHT - 40)
+    
+    -- Draw "FOREMAN DAY 1" text
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.setFont(assets.font)
+    love.graphics.printf("FOREMAN", SCREEN_WIDTH - STATUS_BAR_WIDTH, 50, STATUS_BAR_WIDTH, "center")
+    love.graphics.printf("DAY 1", SCREEN_WIDTH - STATUS_BAR_WIDTH, 70, STATUS_BAR_WIDTH, "center")
+    
+    -- Draw clock
+    love.graphics.setColor(1, 1, 0)  -- Yellow
+    love.graphics.circle("fill", SCREEN_WIDTH - STATUS_BAR_WIDTH/2, 120, 30)
+    
+    -- Draw SCORE
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("SCORE", SCREEN_WIDTH - STATUS_BAR_WIDTH, 170, STATUS_BAR_WIDTH, "center")
+    love.graphics.printf("000000", SCREEN_WIDTH - STATUS_BAR_WIDTH, 190, STATUS_BAR_WIDTH, "center")
+end
+
+function ui.drawFieldGrid()    
+    -- Calculate visible grid range
+    local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
+    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
+    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    
+    -- Ensure we're not trying to draw too many cells
+    startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow grid crosses to extend GAME_FIELD_WIDTH_EXTENSION cells left
+    endCol = math.min(GRID_COLS + GAME_FIELD_WIDTH_EXTENSION, endCol)  -- Allow grid crosses to extend GAME_FIELD_WIDTH_EXTENSION cells right
+    startRow = math.max(SURFACE_LEVEL, startRow)  -- Only draw grid at or below surface
+    endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)  -- Allow for deep scrolling
+    
+    -- Draw grid cells with + symbols at corners
+    for row = startRow, endRow do
+        for col = startCol, endCol do
+            local x, y = ui.gridToScreen(col, row)
+            
+            -- Only draw grid points that are within the visible area (not behind status bar)
+            if x <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
+                -- Draw + symbol at grid corners
+                love.graphics.setColor(unpack(COLORS.grid_symbol))
+                love.graphics.setFont(assets.smallFont)
+                love.graphics.print("+", x - 4, y - 8)
+                
+                -- Highlight "alive" tiles with a subtle glow
+                local isAlive = false
+                for _, tile in ipairs(game.aliveTiles) do
+                    if tile.x == col and tile.y == row then
+                        isAlive = true
+                        break
+                    end
+                end
+                
+                if isAlive then
+                    love.graphics.setColor(0, 0.5, 0, 0.2)  -- Subtle green glow
+                    love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                end
+                
+                -- Highlight cell if mouse is over it and a card is being dragged
+                if game.dragging and not viewport.dragging then
+                    local mouseX, mouseY = love.mouse.getPosition()
+                    local gx, gy = ui.screenToGrid(mouseX, mouseY)
+                    
+                    -- Only highlight cells within visible area
+                    if gx == col and gy == row and x + CARD_WIDTH <= FIELD_WIDTH then
+                        love.graphics.setColor(unpack(COLORS.highlight))
+                        love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function ui.drawFieldCards()
+    -- Draw cards that have been placed on the field
+    for pos, cardData in pairs(game.field) do
+        local y, x = string.match(pos, "(%d+),(%d+)")
+        x, y = tonumber(x), tonumber(y)
+        
+        -- Get the top-left corner of the card
+        local screenX, screenY = ui.gridToScreen(x, y)
+        
+        -- Only draw if the card is in view
+        if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
+           screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+            -- Draw the card
+            love.graphics.setColor(1, 1, 1)
+            
+            -- Handle rotation for flipped cards (180 degrees = pi radians)
+            local rotation = cardData.rotation
+            if cardData.flipped then
+                rotation = rotation + math.pi
+            end
+            
+            love.graphics.draw(
+                assets.cards[cardData.type], 
+                screenX + CARD_WIDTH/2, 
+                screenY + CARD_HEIGHT/2, 
+                rotation,  -- rotation in radians
+                1, 1,      -- scale x, scale y
+                CARD_WIDTH/2,  -- origin x (center of card)
+                CARD_HEIGHT/2  -- origin y (center of card)
+            )
+        end
+    end
+end
+
+function ui.drawCard(card)
+    love.graphics.setColor(1, 1, 1)
+    
+    -- Handle flipped cards (180 degree rotation)
+    if card.flipped then
+        love.graphics.draw(
+            assets.cards[card.type], 
+            card.x + CARD_WIDTH/2, 
+            card.y + CARD_HEIGHT/2,
+            math.pi,  -- 180 degrees in radians
+            1, 1,     -- scale x, scale y
+            CARD_WIDTH/2,  -- origin x (center of card)
+            CARD_HEIGHT/2  -- origin y (center of card)
+        )
+    else
+        love.graphics.draw(assets.cards[card.type], card.x, card.y)
+    end
+    
+    -- For flippable cards, show a small indicator that they can be flipped
+    if game.CARD_PATH_DATA[card.type].flippable then
+        love.graphics.setColor(1, 1, 0, 0.7)  -- Transparent yellow
+        love.graphics.circle("fill", card.x + CARD_WIDTH - 5, card.y + 5, 3)
+    end
+end
+
+-- Draw the appropriate background for the visible field area based on depth
+function ui.drawField()
+    -- Calculate visible grid range
+    local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
+    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
+    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    
+    -- Ensure we're not trying to draw too many cells
+    startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow some scrolling left
+    endCol = math.min(GRID_COLS + GAME_FIELD_WIDTH_EXTENSION, endCol)  -- Allow some scrolling right
+    startRow = math.max(-20, startRow)  -- Allow some scrolling up (20 cells)
+    endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)  -- Allow significant scrolling down
+    
+    -- Draw the background for each visible row section
+    for row = startRow, endRow do
+        local screenY = GRID_OFFSET_Y + row * GRID_CELL_HEIGHT - viewport.offsetY
+        
+        -- Set color based on biome depth
+        if row < SURFACE_LEVEL then
+            love.graphics.setColor(unpack(COLORS.surface))
+        elseif row >= DEEP_MINE_LEVEL then
+            love.graphics.setColor(unpack(COLORS.deep_mine))
+        else
+            love.graphics.setColor(unpack(COLORS.background))
+        end
+        
+        -- Draw a row strip
+        love.graphics.rectangle("fill", 0, screenY, FIELD_WIDTH, GRID_CELL_HEIGHT + 1)
+    end
+end
+
+-- Convert grid coordinates to screen position
+function ui.gridToScreen(gridX, gridY)
+    return GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX, 
+           GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY
+end
+
+-- Convert screen position to grid coordinates
+function ui.screenToGrid(screenX, screenY)
+    return math.floor((screenX - GRID_OFFSET_X + viewport.offsetX) / GRID_CELL_SIZE),
+           math.floor((screenY - GRID_OFFSET_Y + viewport.offsetY) / GRID_CELL_HEIGHT)
+end
+
+-- These are UI helper functions that might be needed
+function ui.canPlaceCard(cardType, gridX, gridY, flipped)
+    return game.canPlaceCard(cardType, gridX, gridY, flipped)
+end
+
+-- Return the UI module
+return ui 
