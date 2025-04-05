@@ -16,6 +16,14 @@ local FIELD_HEIGHT = SCREEN_HEIGHT - HAND_HEIGHT
 local STATUS_BAR_WIDTH = 120  -- Width of the status bar on the right
 local FIELD_WIDTH = SCREEN_WIDTH - STATUS_BAR_WIDTH  -- Visible field width
 
+-- Directions
+local DIRECTION = {
+    TOP = 1,
+    RIGHT = 2,
+    BOTTOM = 3,
+    LEFT = 4
+}
+
 -- Colors
 local COLORS = {
     background = {0, 0, 0},        -- Black
@@ -30,8 +38,8 @@ local COLORS = {
 -- Card types
 local CARD_TYPES = {
     -- 1 Edge, 1 Path
-    PATH_1_1A = "path_1_1a", -- Dead end bottom
-    PATH_1_1B = "path_1_1b", -- Dead ends left
+    PATH_1_1A = "path_1_1a", -- Path bottom
+    PATH_1_1B = "path_1_1b", -- Paths left
     
     -- 2 Edges, 1 Path
     PATH_2_1A = "path_2_1a", -- Vertical path
@@ -47,17 +55,103 @@ local CARD_TYPES = {
     PATH_4_1 = "path_4_1",   -- Cross junction
     
     -- 2 Edges, 2 Paths
-    PATH_2_2A = "path_2_2a", -- Two dead ends vertical
-    PATH_2_2B = "path_2_2b", -- Two dead ends horizontal
-    PATH_2_2C = "path_2_2c", -- Two dead ends, bottom and right
-    PATH_2_2D = "path_2_2d", -- Two dead ends, left and bottom
+    PATH_2_2A = "path_2_2a", -- Two paths vertical
+    PATH_2_2B = "path_2_2b", -- Two paths horizontal
+    PATH_2_2C = "path_2_2c", -- Two paths, bottom and right
+    PATH_2_2D = "path_2_2d", -- Two paths, left and bottom
     
     -- 3 Edges, 3 Paths
-    PATH_3_3A = "path_3_3a", -- Three dead ends top right bottom
-    PATH_3_3B = "path_3_3b", -- Three dead ends left top right
+    PATH_3_3A = "path_3_3a", -- Three paths top right bottom
+    PATH_3_3B = "path_3_3b", -- Three paths left top right
     
     -- 4 Edges, 4 Paths
-    PATH_4_4 = "path_4_4"    -- Four dead ends
+    PATH_4_4 = "path_4_4"    -- Four paths
+}
+
+-- Card path data structure 
+-- edges: which edges have paths (top, right, bottom, left)
+-- paths: arrays describing which edges are connected (by path IDs)
+local CARD_PATH_DATA = {
+    [CARD_TYPES.PATH_1_1A] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.BOTTOM}}, -- Dead end at bottom
+        flippable = true -- Dead end paths are flippable (bottom ↔ top)
+    },
+    [CARD_TYPES.PATH_1_1B] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.LEFT}}, -- Dead end at left
+        flippable = true -- Dead end paths are flippable (left ↔ right)
+    },
+    [CARD_TYPES.PATH_2_1A] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.TOP, DIRECTION.BOTTOM}}, -- Straight vertical path
+        flippable = false -- Vertical paths look the same when flipped
+    },
+    [CARD_TYPES.PATH_2_1B] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.LEFT, DIRECTION.RIGHT}}, -- Straight horizontal path
+        flippable = false -- Horizontal paths look the same when flipped
+    },
+    [CARD_TYPES.PATH_2_1C] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.BOTTOM, DIRECTION.RIGHT}}, -- Curve bottom to right
+        flippable = true -- Curves are flippable (bottom-right ↔ top-left)
+    },
+    [CARD_TYPES.PATH_2_1D] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.LEFT, DIRECTION.BOTTOM}}, -- Curve left to bottom
+        flippable = true -- Curves are flippable (left-bottom ↔ right-top)
+    },
+    [CARD_TYPES.PATH_3_1A] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.TOP, DIRECTION.RIGHT, DIRECTION.BOTTOM}}, -- T-junction right
+        flippable = true -- T-junctions can be flipped
+    },
+    [CARD_TYPES.PATH_3_1B] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.TOP, DIRECTION.RIGHT, DIRECTION.LEFT}}, -- T-junction top
+        flippable = true -- T-junctions can be flipped
+    },
+    [CARD_TYPES.PATH_4_1] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.TOP, DIRECTION.RIGHT, DIRECTION.BOTTOM, DIRECTION.LEFT}}, -- Cross junction
+        flippable = false -- Cross junctions look the same when flipped
+    },
+    [CARD_TYPES.PATH_2_2A] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.TOP}, {DIRECTION.BOTTOM}}, -- Two separate vertical dead ends
+        flippable = false -- Looks the same when flipped
+    },
+    [CARD_TYPES.PATH_2_2B] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.LEFT}, {DIRECTION.RIGHT}}, -- Two separate horizontal dead ends
+        flippable = false -- Looks the same when flipped
+    },
+    [CARD_TYPES.PATH_2_2C] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.RIGHT}, {DIRECTION.BOTTOM}}, -- Two separate dead ends (right and bottom)
+        flippable = true -- Can be flipped to get top-left configuration
+    },
+    [CARD_TYPES.PATH_2_2D] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.BOTTOM}, {DIRECTION.LEFT}}, -- Two separate dead ends (bottom and left)
+        flippable = true -- Can be flipped to get top-right configuration
+    },
+    [CARD_TYPES.PATH_3_3A] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = false},
+        paths = {{DIRECTION.TOP}, {DIRECTION.RIGHT}, {DIRECTION.BOTTOM}}, -- Three separate dead ends
+        flippable = true -- Can be flipped to get left-top-right configuration
+    },
+    [CARD_TYPES.PATH_3_3B] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.LEFT}, {DIRECTION.TOP}, {DIRECTION.RIGHT}}, -- Three separate dead ends
+        flippable = true -- Can be flipped to get left-bottom-right configuration
+    },
+    [CARD_TYPES.PATH_4_4] = {
+        edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = true},
+        paths = {{DIRECTION.TOP}, {DIRECTION.RIGHT}, {DIRECTION.BOTTOM}, {DIRECTION.LEFT}}, -- Four separate dead ends
+        flippable = false -- Looks the same when flipped
+    }
 }
 
 -- Card images mapping
@@ -90,7 +184,8 @@ local game = {
     },
     discard = {      -- Discard pile
         count = 0,   -- Number of cards in discard
-    }
+    },
+    invalidPlacement = nil  -- Tracks invalid placement feedback
 }
 
 -- Load assets
@@ -99,6 +194,80 @@ local assets = {
     font = nil,
     smallFont = nil
 }
+
+-- Check if a card can be placed at given grid coordinates
+function canPlaceCard(cardType, gridX, gridY, flipped)
+    local cardData = flipped and getFlippedCardData(cardType, true) or CARD_PATH_DATA[cardType]
+    
+    -- Check each adjacent cell for compatibility
+    local adjacentCells = {
+        top = {x = gridX, y = gridY - 1, direction = DIRECTION.BOTTOM, opposite = DIRECTION.TOP},
+        right = {x = gridX + 1, y = gridY, direction = DIRECTION.LEFT, opposite = DIRECTION.RIGHT},
+        bottom = {x = gridX, y = gridY + 1, direction = DIRECTION.TOP, opposite = DIRECTION.BOTTOM},
+        left = {x = gridX - 1, y = gridY, direction = DIRECTION.RIGHT, opposite = DIRECTION.LEFT},
+    }
+    
+    -- For each adjacent cell, check if its matching edge is compatible
+    for position, adjacent in pairs(adjacentCells) do
+        local adjacentCardData = game.field[adjacent.y .. "," .. adjacent.x]
+        
+        -- If there's a card adjacent, check edge compatibility
+        if adjacentCardData then
+            local adjacentCard = adjacentCardData.flipped and 
+                                 getFlippedCardData(adjacentCardData.type, true) or 
+                                 CARD_PATH_DATA[adjacentCardData.type]
+            
+            -- Check if the edges match (both open or both closed)
+            -- If one has a path and the other doesn't, they're incompatible
+            if cardData.edges[adjacent.opposite] ~= adjacentCard.edges[adjacent.direction] then
+                return false
+            end
+        end
+    end
+    
+    return true
+end
+
+-- Get the flipped version of a card type (rotated 180 degrees)
+function getFlippedCardData(cardType, isFlipped)
+    local data = CARD_PATH_DATA[cardType]
+    
+    -- If not flippable or not flipped, return original data
+    if not data.flippable or not isFlipped then
+        return data
+    end
+    
+    -- Create flipped version (180 degree rotation)
+    local flippedData = {
+        edges = {},
+        paths = {}
+    }
+    
+    -- Flip edges (TOP ↔ BOTTOM, LEFT ↔ RIGHT)
+    flippedData.edges[DIRECTION.TOP] = data.edges[DIRECTION.BOTTOM]
+    flippedData.edges[DIRECTION.RIGHT] = data.edges[DIRECTION.LEFT]
+    flippedData.edges[DIRECTION.BOTTOM] = data.edges[DIRECTION.TOP]
+    flippedData.edges[DIRECTION.LEFT] = data.edges[DIRECTION.RIGHT]
+    
+    -- Flip paths
+    for i, path in ipairs(data.paths) do
+        flippedData.paths[i] = {}
+        for j, dir in ipairs(path) do
+            -- Flip direction (TOP ↔ BOTTOM, LEFT ↔ RIGHT)
+            if dir == DIRECTION.TOP then
+                flippedData.paths[i][j] = DIRECTION.BOTTOM
+            elseif dir == DIRECTION.RIGHT then
+                flippedData.paths[i][j] = DIRECTION.LEFT
+            elseif dir == DIRECTION.BOTTOM then
+                flippedData.paths[i][j] = DIRECTION.TOP
+            elseif dir == DIRECTION.LEFT then
+                flippedData.paths[i][j] = DIRECTION.RIGHT
+            end
+        end
+    end
+    
+    return flippedData
+end
 
 function love.load()
     -- Load fonts
@@ -111,14 +280,14 @@ function love.load()
     end
     
     -- Initialize hand with some cards for testing (different tunnel types)
-    table.insert(game.cards, { id = 1, x = 0, y = 0, type = CARD_TYPES.PATH_1_1A })
-    table.insert(game.cards, { id = 2, x = 0, y = 0, type = CARD_TYPES.PATH_1_1B })
-    table.insert(game.cards, { id = 3, x = 0, y = 0, type = CARD_TYPES.PATH_2_1A })
-    table.insert(game.cards, { id = 4, x = 0, y = 0, type = CARD_TYPES.PATH_2_1B })
-    table.insert(game.cards, { id = 5, x = 0, y = 0, type = CARD_TYPES.PATH_3_1A })
-    table.insert(game.cards, { id = 6, x = 0, y = 0, type = CARD_TYPES.PATH_3_1B })
-    table.insert(game.cards, { id = 7, x = 0, y = 0, type = CARD_TYPES.PATH_4_1 })
-    table.insert(game.cards, { id = 8, x = 0, y = 0, type = CARD_TYPES.PATH_4_4 })
+    table.insert(game.cards, { id = 1, x = 0, y = 0, type = CARD_TYPES.PATH_1_1A, flipped = false })
+    table.insert(game.cards, { id = 2, x = 0, y = 0, type = CARD_TYPES.PATH_1_1B, flipped = false })
+    table.insert(game.cards, { id = 3, x = 0, y = 0, type = CARD_TYPES.PATH_2_1A, flipped = false })
+    table.insert(game.cards, { id = 4, x = 0, y = 0, type = CARD_TYPES.PATH_2_1B, flipped = false })
+    table.insert(game.cards, { id = 5, x = 0, y = 0, type = CARD_TYPES.PATH_3_1A, flipped = false })
+    table.insert(game.cards, { id = 6, x = 0, y = 0, type = CARD_TYPES.PATH_3_1B, flipped = false })
+    table.insert(game.cards, { id = 7, x = 0, y = 0, type = CARD_TYPES.PATH_4_1, flipped = false })
+    table.insert(game.cards, { id = 8, x = 0, y = 0, type = CARD_TYPES.PATH_4_4, flipped = false })
     
     -- Calculate initial positions for cards in hand
     updateHandPositions()
@@ -161,6 +330,14 @@ function love.update(dt)
         game.dragging.x = love.mouse.getX() - CARD_WIDTH / 2
         game.dragging.y = love.mouse.getY() - CARD_HEIGHT / 2
     end
+    
+    -- Update invalid placement feedback timer
+    if game.invalidPlacement then
+        game.invalidPlacement.time = game.invalidPlacement.time - dt
+        if game.invalidPlacement.time <= 0 then
+            game.invalidPlacement = nil
+        end
+    end
 end
 
 function love.mousepressed(x, y, button)
@@ -170,6 +347,18 @@ function love.mousepressed(x, y, button)
             if x >= card.x and x <= card.x + CARD_WIDTH and
                y >= card.y and y <= card.y + CARD_HEIGHT then
                 game.dragging = card
+                break
+            end
+        end
+    elseif button == 2 then  -- Right mouse button
+        -- Check if we clicked on a card in hand to flip it
+        for i, card in ipairs(game.cards) do
+            if x >= card.x and x <= card.x + CARD_WIDTH and
+               y >= card.y and y <= card.y + CARD_HEIGHT then
+                -- Only flip if card is flippable
+                if CARD_PATH_DATA[card.type].flippable then
+                    card.flipped = not card.flipped
+                end
                 break
             end
         end
@@ -187,9 +376,13 @@ function love.mousereleased(x, y, button)
             local screenX, screenY = gridToScreen(gridX, gridY)
             if gridX >= 0 and gridX < GRID_COLS-1 and gridY >= 0 and gridY < GRID_ROWS-1 and
                screenX + CARD_WIDTH <= FIELD_WIDTH then
+               
+                -- Check if the card can be placed at this location (connections are valid)
+                if canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
                 -- Place card on field
                 game.field[gridY .. "," .. gridX] = {
                     type = game.dragging.type,
+                    flipped = game.dragging.flipped,
                     rotation = 0  -- No rotation for now
                 }
                 
@@ -199,6 +392,15 @@ function love.mousereleased(x, y, button)
                         table.remove(game.cards, i)
                         break
                     end
+                    end
+                else
+                    -- Card connections don't match - provide visual feedback
+                    -- We'll rely on the visual state in the draw function
+                    game.invalidPlacement = {
+                        x = gridX,
+                        y = gridY,
+                        time = 0.5  -- Display feedback for half a second
+                    }
                 end
             end
         end
@@ -265,10 +467,23 @@ function love.draw()
             local x, y = gridToScreen(gridX, gridY)
             -- Only show outline if not behind status bar
             if x + CARD_WIDTH <= FIELD_WIDTH then
-                love.graphics.setColor(1, 1, 1, 0.5)
+                -- Check if placement is valid and show appropriate color
+                local isValidPlacement = canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped)
+                if isValidPlacement then
+                    love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
+                else
+                    love.graphics.setColor(1, 0, 0, 0.5)  -- Red for invalid placement
+                end
                 love.graphics.rectangle("line", x, y, CARD_WIDTH, CARD_HEIGHT)
             end
         end
+    end
+    
+    -- Draw invalid placement feedback if needed
+    if game.invalidPlacement then
+        local x, y = gridToScreen(game.invalidPlacement.x, game.invalidPlacement.y)
+        love.graphics.setColor(1, 0, 0, game.invalidPlacement.time * 2)  -- Red with fading alpha
+        love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
     end
 end
 
@@ -334,21 +549,48 @@ function drawFieldCards()
         
         -- Draw the card
         love.graphics.setColor(1, 1, 1)
+        
+        -- Handle rotation for flipped cards (180 degrees = pi radians)
+        local rotation = cardData.rotation
+        if cardData.flipped then
+            rotation = rotation + math.pi
+        end
+        
         love.graphics.draw(
             assets.cards[cardData.type], 
             screenX + CARD_WIDTH/2, 
             screenY + CARD_HEIGHT/2, 
-            cardData.rotation,  -- rotation in radians
-            1, 1,               -- scale x, scale y
-            CARD_WIDTH/2,       -- origin x (center of card)
-            CARD_HEIGHT/2       -- origin y (center of card)
+            rotation,  -- rotation in radians
+            1, 1,      -- scale x, scale y
+            CARD_WIDTH/2,  -- origin x (center of card)
+            CARD_HEIGHT/2  -- origin y (center of card)
         )
     end
 end
 
 function drawCard(card)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.draw(assets.cards[card.type], card.x, card.y)
+    
+    -- Handle flipped cards (180 degree rotation)
+    if card.flipped then
+        love.graphics.draw(
+            assets.cards[card.type], 
+            card.x + CARD_WIDTH/2, 
+            card.y + CARD_HEIGHT/2,
+            math.pi,  -- 180 degrees in radians
+            1, 1,     -- scale x, scale y
+            CARD_WIDTH/2,  -- origin x (center of card)
+            CARD_HEIGHT/2  -- origin y (center of card)
+        )
+    else
+        love.graphics.draw(assets.cards[card.type], card.x, card.y)
+    end
+    
+    -- For flippable cards, show a small indicator that they can be flipped
+    if CARD_PATH_DATA[card.type].flippable then
+        love.graphics.setColor(1, 1, 0, 0.7)  -- Transparent yellow
+        love.graphics.circle("fill", card.x + CARD_WIDTH - 5, card.y + 5, 3)
+    end
 end
 
 function love.keypressed(key)
