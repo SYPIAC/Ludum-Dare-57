@@ -26,6 +26,11 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+powershell -Command "(Get-Content web\index.html) -replace 'width=\"800\" height=\"600\"', 'width=\"520\" height=\"800\"' | Set-Content web\index.html"
+if %ERRORLEVEL% NEQ 0 (
+    echo Warning: Failed to update canvas dimensions
+)
+
 del game.love
 
 echo Creating itch.io upload package...
