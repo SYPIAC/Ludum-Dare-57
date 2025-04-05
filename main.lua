@@ -16,6 +16,19 @@ local FIELD_HEIGHT = SCREEN_HEIGHT - HAND_HEIGHT
 local STATUS_BAR_WIDTH = 120  -- Width of the status bar on the right
 local FIELD_WIDTH = SCREEN_WIDTH - STATUS_BAR_WIDTH  -- Visible field width
 
+-- Biome boundaries
+local SURFACE_LEVEL = 0  -- y < SURFACE_LEVEL: surface (brown, no grid)
+local DEEP_MINE_LEVEL = 10  -- y >= DEEP_MINE_LEVEL: deep mine (gray)
+
+-- Viewport/scrolling
+local viewport = {
+    offsetX = 0,
+    offsetY = 0,
+    dragging = false,
+    lastMouseX = 0,
+    lastMouseY = 0
+}
+
 -- Directions
 local DIRECTION = {
     TOP = 1,
@@ -33,6 +46,8 @@ local COLORS = {
     top_bar = {0.5, 0.3, 0.2},     -- Brown for top bar
     text = {1, 1, 1},              -- White text
     highlight = {0.5, 0.5, 0.7, 0.3}, -- Bluish highlight
+    surface = {0.6, 0.4, 0.2},     -- Brown for surface (above ground)
+    deep_mine = {0.3, 0.3, 0.35},  -- Grayish for deep mine
 }
 
 -- Card types
@@ -338,14 +353,14 @@ end
 
 -- Convert grid coordinates to screen position
 function gridToScreen(gridX, gridY)
-    return GRID_OFFSET_X + gridX * GRID_CELL_SIZE, 
-           GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT
+    return GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX, 
+           GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY
 end
 
 -- Convert screen position to grid coordinates
 function screenToGrid(screenX, screenY)
-    return math.floor((screenX - GRID_OFFSET_X) / GRID_CELL_SIZE),
-           math.floor((screenY - GRID_OFFSET_Y) / GRID_CELL_HEIGHT)
+    return math.floor((screenX - GRID_OFFSET_X + viewport.offsetX) / GRID_CELL_SIZE),
+           math.floor((screenY - GRID_OFFSET_Y + viewport.offsetY) / GRID_CELL_HEIGHT)
 end
 
 function love.update(dt)
@@ -353,6 +368,29 @@ function love.update(dt)
     if game.dragging then
         game.dragging.x = love.mouse.getX() - CARD_WIDTH / 2
         game.dragging.y = love.mouse.getY() - CARD_HEIGHT / 2
+    end
+    
+    -- Handle viewport dragging
+    if viewport.dragging then
+        local mouseX, mouseY = love.mouse.getPosition()
+        local dx = mouseX - viewport.lastMouseX
+        local dy = mouseY - viewport.lastMouseY
+        
+        -- Only scroll field area, not hand area
+        if love.mouse.getY() < FIELD_HEIGHT then
+            viewport.offsetX = viewport.offsetX - dx
+            viewport.offsetY = viewport.offsetY - dy
+            
+            -- Restrict horizontal scrolling to +/-10 cells
+            local maxHorizontalOffset = 10 * GRID_CELL_SIZE
+            viewport.offsetX = math.max(-maxHorizontalOffset, math.min(maxHorizontalOffset, viewport.offsetX))
+            
+            -- Restrict vertical scrolling to prevent seeing too far above surface
+            viewport.offsetY = math.max(-GRID_OFFSET_Y, viewport.offsetY)
+        end
+        
+        viewport.lastMouseX = mouseX
+        viewport.lastMouseY = mouseY
     end
     
     -- Update invalid placement feedback timer
@@ -366,12 +404,44 @@ end
 
 function love.mousepressed(x, y, button)
     if button == 1 then  -- Left mouse button
-        -- Check if we clicked on a card in hand
-        for i, card in ipairs(game.cards) do
-            if x >= card.x and x <= card.x + CARD_WIDTH and
-               y >= card.y and y <= card.y + CARD_HEIGHT then
-                game.dragging = card
-                break
+        -- If we're in the field area (not hand) and not over an "alive" tile
+        if y < FIELD_HEIGHT then
+            local gridX, gridY = screenToGrid(x, y)
+            
+            -- Check if we're over an alive tile (potential card placement spot)
+            local overAliveTile = false
+            for _, tile in ipairs(game.aliveTiles) do
+                if tile.x == gridX and tile.y == gridY then
+                    overAliveTile = true
+                    break
+                end
+            end
+            
+            -- Check if we clicked on a card in hand
+            local cardClicked = false
+            for i, card in ipairs(game.cards) do
+                if x >= card.x and x <= card.x + CARD_WIDTH and
+                   y >= card.y and y <= card.y + CARD_HEIGHT then
+                    game.dragging = card
+                    cardClicked = true
+                    break
+                end
+            end
+            
+            -- If not over an alive tile and not dragging a card, start viewport dragging
+            if not overAliveTile and not cardClicked and not game.dragging then
+                viewport.dragging = true
+                viewport.lastMouseX = x
+                viewport.lastMouseY = y
+            end
+        else
+            -- In hand area, check for card dragging
+            for i, card in ipairs(game.cards) do
+                if x >= card.x and x <= card.x + CARD_WIDTH and
+                   y >= card.y and y <= card.y + CARD_HEIGHT then
+                    game.dragging = card
+                    break
+                end
             end
         end
     elseif button == 2 then  -- Right mouse button
@@ -390,51 +460,56 @@ function love.mousepressed(x, y, button)
 end
 
 function love.mousereleased(x, y, button)
-    if button == 1 and game.dragging then
-        -- Check if card was dropped on the field
-        if y < FIELD_HEIGHT then
-            -- Convert screen position to grid
-            local gridX, gridY = screenToGrid(x, y)
-            
-            -- Check if this is a valid cell for a card (needs enough space and not behind status bar)
-            local screenX, screenY = gridToScreen(gridX, gridY)
-            if gridX >= 0 and gridX < GRID_COLS-1 and gridY >= 0 and gridY < GRID_ROWS-1 and
-               screenX + CARD_WIDTH <= FIELD_WIDTH then
-               
-                -- Check if the card can be placed at this location (connections are valid)
-                if canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
-                    -- Place card on field
-                    game.field[gridY .. "," .. gridX] = {
-                        type = game.dragging.type,
-                        flipped = game.dragging.flipped,
-                        rotation = 0  -- No rotation for now
-                    }
-                    
-                    -- Remove card from hand
-                    for i, card in ipairs(game.cards) do
-                        if card == game.dragging then
-                            table.remove(game.cards, i)
-                            break
+    if button == 1 then  -- Left mouse button
+        -- Stop viewport dragging
+        viewport.dragging = false
+        
+        -- Handle card placement if dragging a card
+        if game.dragging then
+            -- Check if card was dropped on the field
+            if y < FIELD_HEIGHT then
+                -- Convert screen position to grid
+                local gridX, gridY = screenToGrid(x, y)
+                
+                -- Check if this is a valid cell for a card (needs enough space and not behind status bar)
+                local screenX, screenY = gridToScreen(gridX, gridY)
+                if screenX + CARD_WIDTH <= FIELD_WIDTH and screenX >= 0 and screenY >= 40 and screenY <= FIELD_HEIGHT then
+                   
+                    -- Check if the card can be placed at this location (connections are valid)
+                    if canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
+                        -- Place card on field
+                        game.field[gridY .. "," .. gridX] = {
+                            type = game.dragging.type,
+                            flipped = game.dragging.flipped,
+                            rotation = 0  -- No rotation for now
+                        }
+                        
+                        -- Remove card from hand
+                        for i, card in ipairs(game.cards) do
+                            if card == game.dragging then
+                                table.remove(game.cards, i)
+                                break
+                            end
                         end
+                        
+                        -- Update the alive tiles after placing a card
+                        updateAliveTiles()
+                    else
+                        -- Card connections don't match or not an alive tile
+                        -- provide visual feedback
+                        game.invalidPlacement = {
+                            x = gridX,
+                            y = gridY,
+                            time = 0.5  -- Display feedback for half a second
+                        }
                     end
-                    
-                    -- Update the alive tiles after placing a card
-                    updateAliveTiles()
-                else
-                    -- Card connections don't match or not an alive tile
-                    -- provide visual feedback
-                    game.invalidPlacement = {
-                        x = gridX,
-                        y = gridY,
-                        time = 0.5  -- Display feedback for half a second
-                    }
                 end
             end
+            
+            -- Reset dragging state and update hand positions
+            game.dragging = nil
+            updateHandPositions()
         end
-        
-        -- Reset dragging state and update hand positions
-        game.dragging = nil
-        updateHandPositions()
     end
 end
 
@@ -442,9 +517,8 @@ function love.draw()
     -- Set background color
     love.graphics.setBackgroundColor(unpack(COLORS.background))
     
-    -- Draw top brown bar
-    love.graphics.setColor(unpack(COLORS.top_bar))
-    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, 40)
+    -- Draw the field with appropriate biome backgrounds
+    drawField()
     
     -- Draw the field grid
     drawFieldGrid()
@@ -490,19 +564,17 @@ function love.draw()
     -- DEBUG: Draw card outline to verify grid alignment
     if game.dragging and love.mouse.getY() < FIELD_HEIGHT then
         local gridX, gridY = screenToGrid(love.mouse.getX(), love.mouse.getY())
-        if gridX >= 0 and gridX < GRID_COLS-1 and gridY >= 0 and gridY < GRID_ROWS-1 then
-            local x, y = gridToScreen(gridX, gridY)
-            -- Only show outline if not behind status bar
-            if x + CARD_WIDTH <= FIELD_WIDTH then
-                -- Check if placement is valid and show appropriate color
-                local isValidPlacement = canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped)
-                if isValidPlacement then
-                    love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
-                else
-                    love.graphics.setColor(1, 0, 0, 0.5)  -- Red for invalid placement
-                end
-                love.graphics.rectangle("line", x, y, CARD_WIDTH, CARD_HEIGHT)
+        local x, y = gridToScreen(gridX, gridY)
+        -- Only show outline if not behind status bar
+        if x + CARD_WIDTH <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
+            -- Check if placement is valid and show appropriate color
+            local isValidPlacement = canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped)
+            if isValidPlacement then
+                love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
+            else
+                love.graphics.setColor(1, 0, 0, 0.5)  -- Red for invalid placement
             end
+            love.graphics.rectangle("line", x, y, CARD_WIDTH, CARD_HEIGHT)
         end
     end
     
@@ -512,6 +584,17 @@ function love.draw()
         love.graphics.setColor(1, 0, 0, game.invalidPlacement.time * 2)  -- Red with fading alpha
         love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
     end
+    
+    -- Draw top brown bar (always on top)
+    love.graphics.setColor(unpack(COLORS.top_bar))
+    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, 40)
+    
+    -- Debug: draw coordinates info
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(assets.smallFont)
+    local mx, my = love.mouse.getPosition()
+    local gx, gy = screenToGrid(mx, my)
+    love.graphics.print("View: " .. viewport.offsetX .. "," .. viewport.offsetY .. " Mouse: " .. gx .. "," .. gy, 10, 10)
 end
 
 -- Function to draw the status bar
@@ -537,13 +620,25 @@ function drawStatusBar()
 end
 
 function drawFieldGrid()    
+    -- Calculate visible grid range
+    local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
+    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
+    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    
+    -- Ensure we're not trying to draw too many cells
+    startCol = math.max(-10, startCol)  -- Allow grid crosses to extend 10 cells left
+    endCol = math.min(GRID_COLS + 10, endCol)  -- Allow grid crosses to extend 10 cells right
+    startRow = math.max(SURFACE_LEVEL, startRow)  -- Only draw grid at or below surface
+    endRow = math.min(GRID_ROWS + 100, endRow)  -- Allow for deep scrolling
+    
     -- Draw grid cells with + symbols at corners
-    for row = 0, GRID_ROWS do
-        for col = 0, GRID_COLS do
+    for row = startRow, endRow do
+        for col = startCol, endCol do
             local x, y = gridToScreen(col, row)
             
             -- Only draw grid points that are within the visible area (not behind status bar)
-            if x <= FIELD_WIDTH then
+            if x <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
                 -- Draw + symbol at grid corners
                 love.graphics.setColor(unpack(COLORS.grid_symbol))
                 love.graphics.setFont(assets.smallFont)
@@ -558,13 +653,13 @@ function drawFieldGrid()
                     end
                 end
                 
-                if isAlive and col < GRID_COLS-1 and row < GRID_ROWS-1 then
+                if isAlive then
                     love.graphics.setColor(0, 0.5, 0, 0.2)  -- Subtle green glow
                     love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
                 end
                 
                 -- Highlight cell if mouse is over it and a card is being dragged
-                if game.dragging and col < GRID_COLS-1 and row < GRID_ROWS-1 then
+                if game.dragging and not viewport.dragging then
                     local mouseX, mouseY = love.mouse.getPosition()
                     local gx, gy = screenToGrid(mouseX, mouseY)
                     
@@ -588,24 +683,28 @@ function drawFieldCards()
         -- Get the top-left corner of the card
         local screenX, screenY = gridToScreen(x, y)
         
-        -- Draw the card
-        love.graphics.setColor(1, 1, 1)
-        
-        -- Handle rotation for flipped cards (180 degrees = pi radians)
-        local rotation = cardData.rotation
-        if cardData.flipped then
-            rotation = rotation + math.pi
+        -- Only draw if the card is in view
+        if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
+           screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+            -- Draw the card
+            love.graphics.setColor(1, 1, 1)
+            
+            -- Handle rotation for flipped cards (180 degrees = pi radians)
+            local rotation = cardData.rotation
+            if cardData.flipped then
+                rotation = rotation + math.pi
+            end
+            
+            love.graphics.draw(
+                assets.cards[cardData.type], 
+                screenX + CARD_WIDTH/2, 
+                screenY + CARD_HEIGHT/2, 
+                rotation,  -- rotation in radians
+                1, 1,      -- scale x, scale y
+                CARD_WIDTH/2,  -- origin x (center of card)
+                CARD_HEIGHT/2  -- origin y (center of card)
+            )
         end
-        
-        love.graphics.draw(
-            assets.cards[cardData.type], 
-            screenX + CARD_WIDTH/2, 
-            screenY + CARD_HEIGHT/2, 
-            rotation,  -- rotation in radians
-            1, 1,      -- scale x, scale y
-            CARD_WIDTH/2,  -- origin x (center of card)
-            CARD_HEIGHT/2  -- origin y (center of card)
-        )
     end
 end
 
@@ -759,16 +858,43 @@ function updateAliveTiles()
                 if not isDeadEnd and isTileEmpty(adj.x, adj.y) then
                     -- And if it's not already in our alive tiles list
                     if not isInAliveTiles(adj.x, adj.y) then
-                        -- Make sure it's within the grid and not behind status bar
-                        local screenX, _ = gridToScreen(adj.x, adj.y)
-                        if adj.x >= 0 and adj.x < GRID_COLS-1 and adj.y >= 0 and adj.y < GRID_ROWS-1 and
-                           screenX + CARD_WIDTH <= FIELD_WIDTH then
-                            -- Add to alive tiles
-                            table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
-                        end
+                        -- Add to alive tiles (without grid or field restrictions)
+                        table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
                     end
                 end
             end
         end
+    end
+end
+
+-- Draw the appropriate background for the visible field area based on depth
+function drawField()
+    -- Calculate visible grid range
+    local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
+    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
+    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    
+    -- Ensure we're not trying to draw too many cells
+    startCol = math.max(-10, startCol)  -- Allow some scrolling left (10 cells)
+    endCol = math.min(GRID_COLS + 10, endCol)  -- Allow some scrolling right (10 cells)
+    startRow = math.max(-20, startRow)  -- Allow some scrolling up (20 cells)
+    endRow = math.min(GRID_ROWS + 100, endRow)  -- Allow significant scrolling down
+    
+    -- Draw the background for each visible row section
+    for row = startRow, endRow do
+        local screenY = GRID_OFFSET_Y + row * GRID_CELL_HEIGHT - viewport.offsetY
+        
+        -- Set color based on biome depth
+        if row < SURFACE_LEVEL then
+            love.graphics.setColor(unpack(COLORS.surface))
+        elseif row >= DEEP_MINE_LEVEL then
+            love.graphics.setColor(unpack(COLORS.deep_mine))
+        else
+            love.graphics.setColor(unpack(COLORS.background))
+        end
+        
+        -- Draw a row strip
+        love.graphics.rectangle("fill", 0, screenY, FIELD_WIDTH, GRID_CELL_HEIGHT + 1)
     end
 end 
