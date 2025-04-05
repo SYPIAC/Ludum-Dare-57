@@ -185,7 +185,8 @@ local game = {
     discard = {      -- Discard pile
         count = 0,   -- Number of cards in discard
     },
-    invalidPlacement = nil  -- Tracks invalid placement feedback
+    invalidPlacement = nil,  -- Tracks invalid placement feedback
+    aliveTiles = {}   -- List of coordinates for "alive" tiles (reachable empty tiles)
 }
 
 -- Load assets
@@ -197,6 +198,20 @@ local assets = {
 
 -- Check if a card can be placed at given grid coordinates
 function canPlaceCard(cardType, gridX, gridY, flipped)
+    -- First check: is this an "alive" tile?
+    local isAlive = false
+    for _, tile in ipairs(game.aliveTiles) do
+        if tile.x == gridX and tile.y == gridY then
+            isAlive = true
+            break
+        end
+    end
+    
+    if not isAlive then
+        return false
+    end
+    
+    -- Second check: do the edges match with adjacent cards?
     local cardData = flipped and getFlippedCardData(cardType, true) or CARD_PATH_DATA[cardType]
     
     -- Check each adjacent cell for compatibility
@@ -217,11 +232,14 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
                                  getFlippedCardData(adjacentCardData.type, true) or 
                                  CARD_PATH_DATA[adjacentCardData.type]
             
-            -- Check if the edges match (both open or both closed)
-            -- If one has a path and the other doesn't, they're incompatible
+            -- First, check if both edges have openings or both are closed
             if cardData.edges[adjacent.opposite] ~= adjacentCard.edges[adjacent.direction] then
                 return false
             end
+            
+            -- If both edges have openings, they're compatible
+            -- We don't need the complex path checking as all edges that have openings
+            -- are valid connections in this game. Dead ends and paths can connect together.
         end
     end
     
@@ -291,6 +309,12 @@ function love.load()
     
     -- Calculate initial positions for cards in hand
     updateHandPositions()
+    
+    -- Generate the initial mineshaft structure
+    generateInitialMineshaft()
+    
+    -- Initialize RNG
+    love.math.setRandomSeed(os.time())
 end
 
 function updateHandPositions()
@@ -379,23 +403,26 @@ function love.mousereleased(x, y, button)
                
                 -- Check if the card can be placed at this location (connections are valid)
                 if canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
-                -- Place card on field
-                game.field[gridY .. "," .. gridX] = {
-                    type = game.dragging.type,
-                    flipped = game.dragging.flipped,
-                    rotation = 0  -- No rotation for now
-                }
-                
-                -- Remove card from hand
-                for i, card in ipairs(game.cards) do
-                    if card == game.dragging then
-                        table.remove(game.cards, i)
-                        break
+                    -- Place card on field
+                    game.field[gridY .. "," .. gridX] = {
+                        type = game.dragging.type,
+                        flipped = game.dragging.flipped,
+                        rotation = 0  -- No rotation for now
+                    }
+                    
+                    -- Remove card from hand
+                    for i, card in ipairs(game.cards) do
+                        if card == game.dragging then
+                            table.remove(game.cards, i)
+                            break
+                        end
                     end
-                    end
+                    
+                    -- Update the alive tiles after placing a card
+                    updateAliveTiles()
                 else
-                    -- Card connections don't match - provide visual feedback
-                    -- We'll rely on the visual state in the draw function
+                    -- Card connections don't match or not an alive tile
+                    -- provide visual feedback
                     game.invalidPlacement = {
                         x = gridX,
                         y = gridY,
@@ -522,6 +549,20 @@ function drawFieldGrid()
                 love.graphics.setFont(assets.smallFont)
                 love.graphics.print("+", x - 4, y - 8)
                 
+                -- Highlight "alive" tiles with a subtle glow
+                local isAlive = false
+                for _, tile in ipairs(game.aliveTiles) do
+                    if tile.x == col and tile.y == row then
+                        isAlive = true
+                        break
+                    end
+                end
+                
+                if isAlive and col < GRID_COLS-1 and row < GRID_ROWS-1 then
+                    love.graphics.setColor(0, 0.5, 0, 0.2)  -- Subtle green glow
+                    love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                end
+                
                 -- Highlight cell if mouse is over it and a card is being dragged
                 if game.dragging and col < GRID_COLS-1 and row < GRID_ROWS-1 then
                     local mouseX, mouseY = love.mouse.getPosition()
@@ -596,5 +637,138 @@ end
 function love.keypressed(key)
     if key == "escape" then
         love.event.quit()
+    end
+end
+
+-- Generate the initial mineshaft structure
+function generateInitialMineshaft()
+    -- Clear the field
+    game.field = {}
+    
+    -- Center column position
+    local centerX = math.floor(GRID_COLS / 2 - 1)
+    
+    -- First tile: Straight vertical path at the top
+    game.field["0," .. centerX] = {
+        type = CARD_TYPES.PATH_2_1A,
+        flipped = false,
+        rotation = 0
+    }
+    
+    -- Second tile: Random connector that goes down (with possible branches)
+    local secondTileOptions = {
+        CARD_TYPES.PATH_2_1A,  -- Straight down
+        CARD_TYPES.PATH_3_1A,  -- T-junction right
+        CARD_TYPES.PATH_4_1    -- Cross junction
+    }
+    local secondTileType = secondTileOptions[love.math.random(1, #secondTileOptions)]
+    
+    game.field["1," .. centerX] = {
+        type = secondTileType,
+        flipped = false,
+        rotation = 0
+    }
+    
+    -- Third tile: Random tile that connects to the top and isn't too dead endy
+    local thirdTileOptions = {
+        CARD_TYPES.PATH_2_1A,  -- Straight down
+        CARD_TYPES.PATH_2_1C,  -- Curve
+        CARD_TYPES.PATH_2_1D,  -- Curve
+        CARD_TYPES.PATH_3_1A,  -- T-junction right
+        CARD_TYPES.PATH_3_1B,  -- T-junction top
+        CARD_TYPES.PATH_4_1  -- Cross junction
+    }
+    local thirdTileType = thirdTileOptions[love.math.random(1, #thirdTileOptions)]
+    local flip = false
+    if(thirdTileType == CARD_TYPES.PATH_2_1C or thirdTileType == CARD_TYPES.PATH_2_1D) then
+        flip = true
+    end
+    game.field["2," .. centerX] = {
+        type = thirdTileType,
+        flipped = flip,
+        rotation = 0
+    }
+    
+    -- Update alive tiles after placing the initial structure
+    updateAliveTiles()
+end
+
+-- Update the list of "alive" tiles (empty tiles reachable from the mineshaft)
+function updateAliveTiles()
+    -- Clear the current list
+    game.aliveTiles = {}
+    
+    -- Helper function to check if a tile is empty
+    local function isTileEmpty(x, y)
+        return game.field[y .. "," .. x] == nil
+    end
+    
+    -- Helper function to check if a specific coordinate is already in alive tiles
+    local function isInAliveTiles(x, y)
+        for _, tile in ipairs(game.aliveTiles) do
+            if tile.x == x and tile.y == y then
+                return true
+            end
+        end
+        return false
+    end
+    
+    -- For each card on the field, check its open edges
+    for pos, cardData in pairs(game.field) do
+        local y, x = string.match(pos, "(%d+),(%d+)")
+        x, y = tonumber(x), tonumber(y)
+        
+        -- Get the card data with flip state considered
+        local pathData = cardData.flipped and 
+                         getFlippedCardData(cardData.type, true) or 
+                         CARD_PATH_DATA[cardData.type]
+        
+        -- Check each direction for open paths
+        local adjacentPositions = {
+            {dir = DIRECTION.TOP, x = x, y = y - 1},
+            {dir = DIRECTION.RIGHT, x = x + 1, y = y},
+            {dir = DIRECTION.BOTTOM, x = x, y = y + 1},
+            {dir = DIRECTION.LEFT, x = x - 1, y = y}
+        }
+        
+        for _, adj in ipairs(adjacentPositions) do
+            -- First check if the edge has a path
+            if pathData.edges[adj.dir] then
+                -- Check if this edge is part of a dead end (single-direction path)
+                local isDeadEnd = true
+                
+                -- Find which path this edge belongs to
+                for _, path in ipairs(pathData.paths) do
+                    -- Check if this path contains our direction
+                    local containsDir = false
+                    for _, dir in ipairs(path) do
+                        if dir == adj.dir then
+                            containsDir = true
+                            break
+                        end
+                    end
+                    
+                    -- If this path contains our direction and has multiple connections, it's not a dead end
+                    if containsDir and #path > 1 then
+                        isDeadEnd = false
+                        break
+                    end
+                end
+                
+                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) then
+                    -- And if it's not already in our alive tiles list
+                    if not isInAliveTiles(adj.x, adj.y) then
+                        -- Make sure it's within the grid and not behind status bar
+                        local screenX, _ = gridToScreen(adj.x, adj.y)
+                        if adj.x >= 0 and adj.x < GRID_COLS-1 and adj.y >= 0 and adj.y < GRID_ROWS-1 and
+                           screenX + CARD_WIDTH <= FIELD_WIDTH then
+                            -- Add to alive tiles
+                            table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
+                        end
+                    end
+                end
+            end
+        end
     end
 end 
