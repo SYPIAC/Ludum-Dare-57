@@ -515,9 +515,6 @@ function love.mousepressed(x, y, button, istouch, presses)
         -- Reset the day over flag
         game.isDayOver = false
         
-        -- Play the day start sound
-        playDayStartSound()
-        
         return
     end
     
