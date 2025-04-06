@@ -643,15 +643,15 @@ function love.mousereleased(x, y, button)
                                 -- Add to new position
                                 game.plannedCards[newPosition] = cardData
                                 
-                                -- Add the tile back to alive tiles
+                                -- Get original position coordinates for alive tiles update
                                 local gridY, gridX = string.match(game.dragging.plannedPosition, "(%d+),([%-%d]+)")
                                 gridX, gridY = tonumber(gridX), tonumber(gridY)
                                 
-                                -- Skip if coordinates are invalid
+                                -- Add the tile back to alive tiles
                                 if gridX ~= nil and gridY ~= nil then
                                     addToAliveTiles(gridX, gridY)
                                 else
-                                    print("Warning: Invalid position format in dragging: " .. game.dragging.plannedPosition)
+                                    print("Warning: Invalid position format when returning to hand: " .. game.dragging.plannedPosition)
                                 end
                             end
                         end
@@ -669,8 +669,19 @@ function love.mousereleased(x, y, button)
                         held = false
                     })
                     
+                    -- Get original position coordinates for alive tiles update
+                    local gridY, gridX = string.match(game.dragging.plannedPosition, "(%d+),([%-%d]+)")
+                    gridX, gridY = tonumber(gridX), tonumber(gridY)
+                    
                     -- Remove from planned cards
                     game.plannedCards[game.dragging.plannedPosition] = nil
+                    
+                    -- Add the tile back to alive tiles
+                    if gridX ~= nil and gridY ~= nil then
+                        addToAliveTiles(gridX, gridY)
+                    else
+                        print("Warning: Invalid position format when returning to hand: " .. game.dragging.plannedPosition)
+                    end
                     
                     -- Decrement play count
                     game.playCount = game.playCount - 1
@@ -856,26 +867,31 @@ function generateInitialMineshaft()
         CARD_TYPES.PATH_4_1    -- Cross junction
     }
     local secondTileType = secondTileOptions[love.math.random(1, #secondTileOptions)]
-    
+
     game.field["1," .. centerX] = {
         type = secondTileType,
         flipped = false,
         rotation = 0
     }
     
+    
     -- Third tile: Random tile that connects to the top and isn't too dead endy
     local thirdTileOptions = {
-        CARD_TYPES.PATH_2_1A,  -- Straight down
-        CARD_TYPES.PATH_2_1C,  -- Curve
-        CARD_TYPES.PATH_2_1D,  -- Curve
         CARD_TYPES.PATH_3_1A,  -- T-junction right
         CARD_TYPES.PATH_3_1B,  -- T-junction top
         CARD_TYPES.PATH_4_1  -- Cross junction
     }
+    -- If the second tile is straight, we should branch out at the end
+    if secondTileType ~= CARD_TYPES.PATH_2_1A then
+        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1A)
+        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1C)
+        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1D)
+    end
+
     local thirdTileType = thirdTileOptions[love.math.random(1, #thirdTileOptions)]
     local flip = false
     if(thirdTileType == CARD_TYPES.PATH_2_1C or thirdTileType == CARD_TYPES.PATH_2_1D) then
-        flip = true
+    flip = true
     end
     game.field["2," .. centerX] = {
         type = thirdTileType,
@@ -1574,7 +1590,6 @@ function showStoryScreen(storyText)
     game.dayOverReason = storyText or "Story Introduction"
     -- Set day to 0 for story mode
     game.dayClock.day = 0
-    print("STORY SCREEN: Showing story for day 0")
 end
 
 -- Function to play the day start sound
