@@ -252,6 +252,11 @@ function ui.draw()
     elseif discardHover then
         ui.drawCardDistributionPopup(game.discard.cards, SCREEN_WIDTH - 48, FIELD_HEIGHT - 10)
     end
+    
+    -- Draw game over overlay if the game is over
+    if game.isGameOver then
+        ui.drawGameOverOverlay()
+    end
 end
 
 -- Function to draw the status bar
@@ -330,7 +335,7 @@ function ui.drawFieldGrid()
     end
 end
 
--- Draw danger overlays for the hold tiles (tiles that contribute to hold capacity)
+-- Draw danger overlays for tiles marked as danger zones
 function ui.drawDangerTileOverlays()
     -- Calculate visible grid range
     local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
@@ -344,8 +349,8 @@ function ui.drawDangerTileOverlays()
     startRow = math.max(SURFACE_LEVEL, startRow)
     endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)
     
-    -- Draw danger overlays for hold tiles
-    for _, tile in ipairs(game.holdTiles) do
+    -- Draw danger overlays for danger tiles
+    for _, tile in ipairs(game.dangerTiles) do
         -- Check if tile is within the visible range
         if tile.x >= startCol and tile.x <= endCol and tile.y >= startRow and tile.y <= endRow then
             local x, y = ui.gridToScreen(tile.x, tile.y)
@@ -727,6 +732,39 @@ function ui.drawPieSegment(centerX, centerY, radius, startAngle, endAngle)
     
     -- Draw the filled polygon
     love.graphics.polygon("fill", vertices)
+end
+
+-- Function to draw game over overlay
+function ui.drawGameOverOverlay()
+    -- Semi-transparent black overlay
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+    
+    -- Game over text
+    love.graphics.setColor(1, 0, 0)
+    love.graphics.setFont(assets.font)
+    local text = "GAME OVER"
+    local textW = assets.font:getWidth(text)
+    local textH = assets.font:getHeight()
+    
+    -- Draw text centered on screen
+    love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
+    
+    -- Instruction text
+    love.graphics.setColor(1, 1, 1)
+    local infoText = "Danger tiles remained at the end of the day"
+    local infoW = assets.font:getWidth(infoText)
+    
+    -- Draw info text below game over text
+    love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
+    
+    -- Restart instructions
+    love.graphics.setColor(0.8, 0.8, 1)
+    local restartText = "Refresh the page to restart"
+    local restartW = assets.font:getWidth(restartText)
+    
+    -- Draw restart text below info text
+    love.graphics.print(restartText, SCREEN_WIDTH/2 - restartW/2, SCREEN_HEIGHT/2 + textH*3)
 end
 
 -- Return the UI module

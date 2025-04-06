@@ -216,6 +216,7 @@ local game = {
     invalidPlacement = nil,  -- Tracks invalid placement feedback
     aliveTiles = {},   -- List of coordinates for "alive" tiles (reachable empty tiles)
     holdTiles = {},    -- List of coordinates for tiles adjacent to alive tiles (used for hold capacity)
+    dangerTiles = {},  -- List of coordinates for tiles marked as danger zones
     shiftStartAliveTilesCount = 0, -- Number of alive tiles at the start of the shift
     currentHoldCapacity = 0,       -- Current hold capacity (based on connections to alive tiles)
     drawButtonHover = false,  -- Track if mouse is hovering over draw button
@@ -230,12 +231,19 @@ local game = {
         remainingSegments = 6,  -- Number of segments remaining in the day
         day = 1                 -- Current day
     },
+    isGameOver = false,  -- Flag to track if the game is over
     
     -- Function to calculate how many cards to draw based on alive tiles
     calculateDrawAmount = function(aliveTilesCount)
         return math.min(12, 2 + aliveTilesCount)
     end
 }
+
+-- Function called when the game is over
+function game.over(reason)
+    game.isGameOver = true
+    print("GAME OVER: " .. (reason or "Unknown reason"))
+end
 
 -- Load assets
 local assets = {
@@ -370,6 +378,8 @@ function love.load()
     game.maxPlayCards = game.shiftStartAliveTilesCount -- Maximum cards playable this shift
     game.maxHoldCards = game.currentHoldCapacity  -- Hold limit is based only on connections to alive tiles
     
+    -- Don't initialize danger tiles at the start - let them be set at the end of the first day
+    
     -- Draw initial hand using the same formula as endShift
     local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
@@ -458,6 +468,11 @@ function love.update(dt)
 end
 
 function love.mousepressed(x, y, button)
+    -- If the game is over, don't allow interaction
+    if game.isGameOver then
+        return
+    end
+    
     if button == 1 then  -- Left mouse button
         -- Check if draw button was clicked
         local drawButtonX = SCREEN_WIDTH - 48
@@ -719,6 +734,11 @@ end
 
 -- End the current shift, build all planned cards, and advance the day
 function endShift()
+    -- If the game is over, don't allow further shifts
+    if game.isGameOver then
+        return
+    end
+    
     -- First, build all planned cards (move them to the field)
     for pos, cardData in pairs(game.plannedCards) do
         -- Add to permanent field
@@ -741,6 +761,11 @@ function endShift()
     
     -- Advance the day clock
     advanceDayClock()
+    
+    -- If the game is over after advancing the day clock, don't continue
+    if game.isGameOver then
+        return
+    end
     
     -- Discard non-held cards from hand
     discardHand()
@@ -1113,8 +1138,19 @@ function advanceDayClock()
         
         -- If we've reached the end of the day, reset the clock and advance to next day
         if game.dayClock.remainingSegments == 0 then
+            -- Before advancing to the next day, check if there are any danger tiles remaining
+            -- Only check for game over condition after the first day
+            if game.dayClock.day > 1 and #game.dangerTiles > 0 then
+                game.over("Danger tiles remain at the end of the day")
+                return false
+            end
+            
             game.dayClock.day = game.dayClock.day + 1
             game.dayClock.remainingSegments = game.dayClock.totalSegments
+            
+            -- Set new danger tiles for the next day
+            setDangerTiles()
+            
             return true  -- Return true to indicate a day change
         end
     end
@@ -1205,6 +1241,9 @@ function calculateCurrentHoldCapacity()
     -- Clear the previous hold tiles
     game.holdTiles = {}
     
+    -- Create a map of current hold tiles for quicker lookups
+    local currentHoldTilesMap = {}
+    
     -- Identify all tiles adjacent to alive tiles
     local tilesAdjacentToAlive = {}
     
@@ -1240,8 +1279,25 @@ function calculateCurrentHoldCapacity()
                     
                     -- Add to the holdTiles list for visualization
                     table.insert(game.holdTiles, {x = adj.x, y = adj.y})
+                    
+                    -- Record this hold tile in our map
+                    currentHoldTilesMap[adj.x .. "," .. adj.y] = true
                 end
             end
+        end
+    end
+    
+    -- Remove danger status from tiles that are no longer hold tiles
+    local i = 1
+    while i <= #game.dangerTiles do
+        local dangerTile = game.dangerTiles[i]
+        local tileKey = dangerTile.x .. "," .. dangerTile.y
+        
+        if not currentHoldTilesMap[tileKey] then
+            -- This tile is no longer a hold tile, remove it from danger tiles
+            table.remove(game.dangerTiles, i)
+        else
+            i = i + 1
         end
     end
     
@@ -1409,4 +1465,15 @@ function predictAliveAndHoldCapacity()
     end
     
     return #predictedAliveTiles, math.max(predictedHoldCapacity - 1, 0), futureHoldTiles
+end
+
+-- Set danger tiles at the end of a day based on current hold tiles
+function setDangerTiles()
+    -- Clear previous danger tiles
+    game.dangerTiles = {}
+    
+    -- Convert all current hold tiles to danger tiles
+    for _, tile in ipairs(game.holdTiles) do
+        table.insert(game.dangerTiles, {x = tile.x, y = tile.y})
+    end
 end
