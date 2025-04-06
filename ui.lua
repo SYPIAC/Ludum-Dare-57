@@ -290,8 +290,36 @@ function ui.drawStatusBar()
     
     -- Draw SCORE
     love.graphics.setColor(unpack(COLORS.text))
-    love.graphics.printf("SCORE", SCREEN_WIDTH - STATUS_BAR_WIDTH, 170, STATUS_BAR_WIDTH, "center")
-    love.graphics.printf("000000", SCREEN_WIDTH - STATUS_BAR_WIDTH, 190, STATUS_BAR_WIDTH, "center")
+    love.graphics.printf("SCORE", SCREEN_WIDTH - STATUS_BAR_WIDTH, 150, STATUS_BAR_WIDTH, "center")
+    love.graphics.printf("000000", SCREEN_WIDTH - STATUS_BAR_WIDTH, 170, STATUS_BAR_WIDTH, "center")
+    
+    -- Get current depth and depth goal
+    local currentDepth = calculateCurrentDepth()
+    local depthGoal = 0
+    
+    -- Get depth goal from story for current day
+    if story.messages[game.dayClock.day] then
+        depthGoal = story.messages[game.dayClock.day].depthgoal or 0
+    end
+    
+    -- Draw DEPTH indicator
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("DEPTH", SCREEN_WIDTH - STATUS_BAR_WIDTH, 200, STATUS_BAR_WIDTH, "center")
+    
+    -- Color the depth ratio based on progress
+    if currentDepth >= depthGoal and depthGoal > 0 then
+        -- Goal reached - show in green
+        love.graphics.setColor(unpack(COLORS.positive))
+    elseif currentDepth >= depthGoal * 0.75 and depthGoal > 0 then
+        -- Close to goal - show in yellow
+        love.graphics.setColor(1, 1, 0, 1)
+    else
+        -- Far from goal - show in normal text color
+        love.graphics.setColor(unpack(COLORS.text))
+    end
+    
+    -- Draw the depth values
+    love.graphics.printf(currentDepth .. "/" .. depthGoal, SCREEN_WIDTH - STATUS_BAR_WIDTH, 220, STATUS_BAR_WIDTH, "center")
 end
 
 function ui.drawFieldGrid()    

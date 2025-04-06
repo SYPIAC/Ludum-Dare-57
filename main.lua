@@ -779,7 +779,7 @@ function love.keypressed(key)
     if key == "d" then
         -- Debug key to test advancing the day clock
         advanceDayClock()
-    elseif key == "e" then
+    elseif key == "e" and game.isDayOver == false and game.isGameOver == false then
         endShift()
     end
 end
@@ -803,37 +803,47 @@ function endShift()
     -- Clear the planned cards
     game.plannedCards = {}
     
-    -- Update alive tiles now that all cards are built
+    -- Reset play count
+    game.playCount = 0
+    
+    -- Update alive tiles list
     updateAliveTiles()
     
-    -- Update hold capacity tracking
-    game.currentHoldCapacity = calculateCurrentHoldCapacity()
-    
-    -- Update maximum cards playable and holdable
-    game.shiftStartAliveTilesCount = #game.aliveTiles
-    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount,7)
-    game.maxHoldCards = game.currentHoldCapacity
+    -- Check if there are no more alive tiles (game over condition)
+    if #game.aliveTiles == 0 then
+        game.isGameOver = true
+        game.gameOverReason = "No more playable spaces available"
+        return
+    end
     
     -- Advance the day clock
     advanceDayClock()
     
-    -- If the game is over after advancing the day clock, don't continue
-    if game.isGameOver then
+    -- Update the current hold capacity
+    game.currentHoldCapacity = calculateCurrentHoldCapacity()
+    game.maxHoldCards = game.currentHoldCapacity
+    
+    -- Set the maximum playable cards for this shift
+    game.shiftStartAliveTilesCount = #game.aliveTiles
+    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount, 7)
+    
+    -- Discard non-held cards before drawing new ones
+    discardHand()
+    
+    -- Draw new cards for this shift
+    local drawAmount = game.calculateDrawAmount(#game.aliveTiles)
+    
+    -- If we can't draw any cards, end the day
+    if drawAmount <= 0 or #game.deck.cards < drawAmount then
+        game.endDay("Run out of cards")
         return
     end
     
-    -- Discard non-held cards from hand
-    discardHand()
+    -- Draw the cards
+    drawCardsFromDeck(drawAmount)
     
-    -- Draw new cards to fill the hand based on the number of alive tiles
-    local cardsToAdd = game.calculateDrawAmount(game.shiftStartAliveTilesCount) - game.holdCount
-    drawCardsFromDeck(cardsToAdd)
-    
-    -- Unhold cards AFTER drawing new ones, so cards held from previous shift remain held
-    unholdAllCards()
-    
-    -- Reset play count for the new round
-    game.playCount = 0
+    -- Update the hand positions
+    updateHandPositions()
 end
 
 -- Generate the initial mineshaft structure
@@ -1623,10 +1633,25 @@ function handleDayOverClick()
         -- Otherwise, it's the end of the day - prepare for the next
         game.isDayOver = false
         
+        -- Check if the depth goal was reached (only for end of day, not initial story)
+        local currentDepth = calculateCurrentDepth()
+        local depthGoal = 0
+        
+        -- Get depth goal from story for current day
+        if story.messages[game.dayClock.day] then
+            depthGoal = story.messages[game.dayClock.day].depthgoal or 0
+        end
+        
+        if depthGoal > 0 and currentDepth < depthGoal then
+            game.isGameOver = true
+            game.gameOverReason = "Failed to reach the depth goal of " .. depthGoal .. " fathoms"
+            return
+        end
         
         -- Check if game over (any danger tiles remaining)
         if #game.dangerTiles > 0 then
             game.isGameOver = true
+            game.gameOverReason = "Danger tiles remained at the end of the day"
             return
         end
 
@@ -1691,4 +1716,33 @@ function _G.playShiftEndSound()
     sound:stop()
     -- Play the sound
     sound:play()
+end
+
+-- Function to calculate the current depth of the mine
+function calculateCurrentDepth()
+    -- Start with the initial depth of 30 (from the starter mine)
+    local maxY = 3  -- Y position 3 = 30 fathoms
+    
+    -- Check all cards in the field to find the deepest one
+    for pos, _ in pairs(game.field) do
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")
+        y = tonumber(y)
+        
+        if y and y > maxY then
+            maxY = y
+        end
+    end
+    
+    -- Also check planned cards
+    for pos, _ in pairs(game.plannedCards) do
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")
+        y = tonumber(y)
+        
+        if y and y > maxY then
+            maxY = y
+        end
+    end
+    
+    -- Convert Y position to depth (10 * Y)
+    return maxY * 10
 end

@@ -60,6 +60,7 @@ story.messages = {
     },
     [4] = {
         title = "DAY 4",
+        mindepth = 120,
         depthgoal = 180,
         shifts = 6,
         content = {
@@ -72,6 +73,7 @@ story.messages = {
     },
     [5] = {
         title = "DAY 5",
+        mindepth = 120,
         depthgoal = 220,
         shifts = 5,
         content = {
@@ -80,20 +82,23 @@ story.messages = {
             "The final push",
             "The heat and the distance prove a problem",
             "Today there will be only **5 shifts**",
-            "We will win or die trying"
+            "We will reach the depths or die trying"
         }
     },
     [6] = {
         title = "YOU WIN",
+        mindepth = 120,
         depthgoal = 220,
         shifts = 4,
         content = {
             "FOREMAN",
             "You have reached the final depth",
             "You win",
+            "The picks break against bedrock below",
             "You can keep going, if you want",
             "But no more rewards await you",
-            "There will be **4 shifts**"
+            "Your victory lap",
+            "Will have **4 shifts**"
         }
     }
 }
@@ -323,15 +328,15 @@ function story.drawGameOverOverlay()
     local textHeight = assets.font:getHeight()
     
     -- Draw text centered on screen
-    love.graphics.print(text, screenWidth/2 - textWidth/2, screenHeight/2 - textHeight/2)
+    love.graphics.print(text, screenWidth/2 - textWidth/2, screenHeight/3 - textHeight/2)
     
-    -- Instruction text
+    -- Game over reason text
     love.graphics.setColor(1, 1, 1)
-    local infoText = "Danger tiles remained at the end of the day"
-    local infoWidth = assets.font:getWidth(infoText)
+    local reasonText = game.gameOverReason or "Danger tiles remained at the end of the day"
+    local reasonWidth = assets.font:getWidth(reasonText)
     
-    -- Draw info text below game over text
-    love.graphics.print(infoText, screenWidth/2 - infoWidth/2, screenHeight/2 + textHeight)
+    -- Draw reason text below game over text
+    love.graphics.print(reasonText, screenWidth/2 - reasonWidth/2, screenHeight/2 - textHeight/2)
     
     -- Restart instructions
     love.graphics.setColor(0.8, 0.8, 1)
@@ -339,7 +344,7 @@ function story.drawGameOverOverlay()
     local restartWidth = assets.font:getWidth(restartText)
     
     -- Draw restart text below info text
-    love.graphics.print(restartText, screenWidth/2 - restartWidth/2, screenHeight/2 + textHeight*3)
+    love.graphics.print(restartText, screenWidth/2 - restartWidth/2, screenHeight/2 + textHeight*2)
 end
 
 return story 
