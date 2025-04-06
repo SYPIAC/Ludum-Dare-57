@@ -1,0 +1,22 @@
+---
+description: making sure the code can be ran
+globs: 
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+
+Use this command
+```
+& "C:\Program Files\Git\bin\bash.exe" -c "love ."
+```
+to confirm your code can be ran, and use the terminal output to see compilation errors or debug traces. This is not an instant operation, and user will have to do the tests as well as close the program for you.
+
+
+Do not use
+```
+love .
+```
+it doesn't work.

@@ -58,6 +58,9 @@ function ui.init(gameState, gameAssets, viewportState, directionEnum)
     assets = gameAssets
     viewport = viewportState
     DIRECTION = directionEnum
+    
+    -- Set up references to any prediction functions
+    predictAliveAndHoldCapacity = _G.predictAliveAndHoldCapacity
 end
 
 -- Main drawing function
@@ -88,7 +91,7 @@ function ui.draw()
     love.graphics.setFont(assets.smallFont)
     love.graphics.printf("deck", SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
     love.graphics.printf("x" .. game.deck.count, SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
-    
+
     -- Draw discard space
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("fill", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
@@ -112,6 +115,38 @@ function ui.draw()
     love.graphics.setColor(0, 0, 0)
     love.graphics.setFont(assets.smallFont)
     love.graphics.printf("END SHIFT", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
+    
+    -- Add predicted draw information below button
+    local predictedAliveTiles, _ = predictAliveAndHoldCapacity()
+    local currentDrawAmount = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1.5))
+    local futureDrawAmount = math.min(12, 2 + math.floor(predictedAliveTiles * 1.5))
+    local drawDifference = futureDrawAmount - currentDrawAmount
+
+    -- Display text about the predicted draw amount - moved under deck display and enlarged
+    local infoX = SCREEN_WIDTH - 96 - 40  -- Starting from deck position, extended left
+    local infoY = FIELD_HEIGHT + 20 + CARD_HEIGHT + 30  -- Below deck display
+    local infoWidth = 130  -- Wider area for text
+
+    -- Use larger font
+    love.graphics.setFont(assets.font)
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("You will draw", infoX, infoY, infoWidth, "center")
+
+    -- Draw amount with color-coded difference
+    local numberY = infoY + 25
+    love.graphics.printf(tostring(futureDrawAmount), infoX + 0, numberY, 30, "right")
+
+    if drawDifference > 0 then
+        love.graphics.setColor(0, 1, 0) -- Green for increase
+        love.graphics.printf("(+" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
+    elseif drawDifference < 0 then
+        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        love.graphics.printf("(" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
+    end
+
+    -- Add "cards" text after the numbers
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("cards", infoX + 30, numberY, infoWidth, "center")
     
     -- Draw cards in hand (except the one being dragged)
     for i, card in ipairs(game.cards) do
@@ -156,10 +191,51 @@ function ui.draw()
     -- Draw player information text about card limits
     love.graphics.setColor(unpack(COLORS.text))
     love.graphics.setFont(assets.font)
-    local infoText = string.format("You can play %d/%d cards and hold %d/%d cards", 
-                                  game.playCount, game.maxPlayCards,
-                                  game.holdCount, game.maxHoldCards)
-    love.graphics.printf(infoText, 10, 10, FIELD_WIDTH - 20, "center")
+
+    -- Calculate predicted values for display
+    local predictedAliveTiles, predictedHoldCapacity = predictAliveAndHoldCapacity()
+    local aliveTilesDiff = predictedAliveTiles - game.shiftStartAliveTilesCount
+    local holdCapacityDiff = predictedHoldCapacity - game.currentHoldCapacity
+
+    -- Format change indicators with colors
+    local playChangeText = ""
+    if aliveTilesDiff > 0 then
+        love.graphics.setColor(0, 1, 0) -- Green for increase
+        playChangeText = "(+" .. aliveTilesDiff .. ")"
+    elseif aliveTilesDiff < 0 then
+        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        playChangeText = "(" .. aliveTilesDiff .. ")"
+    end
+
+    -- Display play count with change indicator
+    local playText = string.format("You can play %d/%d", game.playCount, game.maxPlayCards)
+    love.graphics.printf(playText, 10, 10, FIELD_WIDTH/2 - 20, "center")
+    if playChangeText ~= "" then
+        local playTextWidth = assets.font:getWidth(playText)
+        local x = 10 + FIELD_WIDTH/4 + playTextWidth/2 + 5
+        love.graphics.printf(playChangeText, x, 10, 50, "left")
+    end
+
+    -- Format hold change indicator with colors
+    local holdChangeText = ""
+    love.graphics.setColor(unpack(COLORS.text)) -- Reset color
+    if holdCapacityDiff > 0 then
+        love.graphics.setColor(0, 1, 0) -- Green for increase
+        holdChangeText = "(+" .. holdCapacityDiff .. ")"
+    elseif holdCapacityDiff < 0 then
+        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        holdChangeText = "(" .. holdCapacityDiff .. ")"
+    end
+
+    -- Display hold count with change indicator
+    local holdText = string.format("and hold %d/%d cards", game.holdCount, game.maxHoldCards)
+    love.graphics.setColor(unpack(COLORS.text)) -- Reset color
+    love.graphics.printf(holdText, FIELD_WIDTH/2, 10, FIELD_WIDTH/2 - 20, "center")
+    if holdChangeText ~= "" then
+        local holdTextWidth = assets.font:getWidth(holdText)
+        local x = FIELD_WIDTH/2 + FIELD_WIDTH/4 + holdTextWidth/2 - 10
+        love.graphics.printf(holdChangeText, x, 10, 50, "left")
+    end
     
     -- Draw popup for deck or discard if hovering
     if deckHover then

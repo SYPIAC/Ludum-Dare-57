@@ -25,7 +25,6 @@ local SURFACE_LEVEL = 0  -- y < SURFACE_LEVEL: surface (brown, no grid)
 local DEEP_MINE_LEVEL = 10  -- y >= DEEP_MINE_LEVEL: deep mine (gray)
 
 -- Game rules
-local MAX_HOLD_CARDS = 3  -- Maximum number of cards a player can hold between rounds
 local MAX_PLAY_CARDS = 5  -- Maximum number of cards a player can play in a round
 
 -- Viewport/scrolling
@@ -216,6 +215,8 @@ local game = {
     },
     invalidPlacement = nil,  -- Tracks invalid placement feedback
     aliveTiles = {},   -- List of coordinates for "alive" tiles (reachable empty tiles)
+    shiftStartAliveTilesCount = 0, -- Number of alive tiles at the start of the shift
+    currentHoldCapacity = 0,       -- Current hold capacity (based on connections to alive tiles)
     drawButtonHover = false,  -- Track if mouse is hovering over draw button
     CARD_PATH_DATA = CARD_PATH_DATA,  -- Make card path data accessible to UI
     canPlaceCard = nil, -- Function reference to be set in love.load
@@ -348,9 +349,6 @@ function love.load()
     -- Generate the deck
     generateDeck()
     
-    -- Draw initial hand
-    drawCardsFromDeck(12)
-    
     -- Generate the initial mineshaft structure
     generateInitialMineshaft()
     
@@ -359,6 +357,16 @@ function love.load()
     
     -- Initialize the day clock
     setDayClockSegments(6)  -- Start with 6 segments by default
+    
+    -- Initialize tracking values for alive tiles and hold capacity
+    game.shiftStartAliveTilesCount = #game.aliveTiles
+    game.currentHoldCapacity = calculateCurrentHoldCapacity()
+    game.maxPlayCards = game.shiftStartAliveTilesCount - 1 -- Maximum cards playable this shift
+    game.maxHoldCards = game.currentHoldCapacity  -- Hold limit is based only on connections to alive tiles
+    
+    -- Draw initial hand using the same formula as endShift
+    local initialCards = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1.5))
+    drawCardsFromDeck(initialCards)
 end
 
 function updateHandPositions()
@@ -717,15 +725,22 @@ function endShift()
     -- Update alive tiles now that all cards are built
     updateAliveTiles()
     
+    -- Update hold capacity tracking
+    game.currentHoldCapacity = calculateCurrentHoldCapacity()
+    
+    -- Update maximum cards playable and holdable
+    game.shiftStartAliveTilesCount = #game.aliveTiles
+    game.maxPlayCards = game.shiftStartAliveTilesCount - 1
+    game.maxHoldCards = game.currentHoldCapacity
+    
     -- Advance the day clock
     advanceDayClock()
     
     -- Discard non-held cards from hand
     discardHand()
     
-    -- Draw new cards to fill the hand
-    local handCapacity = HAND_CARDS_PER_ROW * HAND_ROWS
-    local cardsToAdd = handCapacity - #game.cards
+    -- Draw new cards to fill the hand based on the number of alive tiles
+    local cardsToAdd = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1.5))
     drawCardsFromDeck(cardsToAdd)
     
     -- Reset play count for the new round
@@ -1145,4 +1160,166 @@ function removeFromAliveTiles(x, y)
             break
         end
     end
+end
+
+-- Calculates the current hold capacity based on the field
+function calculateCurrentHoldCapacity()
+    local holdCapacity = 0
+    
+    -- Identify all tiles adjacent to alive tiles
+    local tilesAdjacentToAlive = {}
+    
+    -- Check each alive tile
+    for _, aliveTile in ipairs(game.aliveTiles) do
+        -- Check all adjacent positions to this alive tile
+        local adjacentPositions = {
+            {x = aliveTile.x, y = aliveTile.y - 1}, -- top
+            {x = aliveTile.x + 1, y = aliveTile.y}, -- right
+            {x = aliveTile.x, y = aliveTile.y + 1}, -- bottom
+            {x = aliveTile.x - 1, y = aliveTile.y}  -- left
+        }
+        
+        -- Check each adjacent position
+        for _, adj in ipairs(adjacentPositions) do
+            local pos = adj.y .. "," .. adj.x
+            
+            -- If there's a card at this position and we haven't counted it yet
+            -- Skip the entrance tiles (y <= 2) as they shouldn't contribute to hold capacity
+            if game.field[pos] and not tilesAdjacentToAlive[pos] and adj.y > 0 then
+                -- Mark this position as adjacent to an alive tile
+                tilesAdjacentToAlive[pos] = true
+                -- Each such tile contributes 1 to hold capacity
+                holdCapacity = holdCapacity + 1
+            end
+        end
+    end
+    
+    return holdCapacity
+end
+
+-- Predicts what the alive tiles would be after building all planned cards
+function predictAliveAndHoldCapacity()
+    -- Make a copy of the field and planned cards
+    local predictedField = {}
+    local futureTiles = {}
+    
+    -- Copy current field
+    for pos, cardData in pairs(game.field) do
+        predictedField[pos] = {
+            type = cardData.type,
+            flipped = cardData.flipped,
+            rotation = cardData.rotation
+        }
+    end
+    
+    -- Add planned cards to the predicted field
+    for pos, cardData in pairs(game.plannedCards) do
+        predictedField[pos] = {
+            type = cardData.type,
+            flipped = cardData.flipped,
+            rotation = cardData.rotation
+        }
+    end
+    
+    -- Helper function to check if a tile is empty in the predicted field
+    local function isTileEmpty(x, y)
+        local pos = y .. "," .. x
+        return predictedField[pos] == nil
+    end
+    
+    -- Helper function to check if a specific coordinate is already in future tiles
+    local function isInFutureTiles(x, y)
+        for _, tile in ipairs(futureTiles) do
+            if tile.x == x and tile.y == y then
+                return true
+            end
+        end
+        return false
+    end
+    
+    -- Process all cards in the predicted field
+    for pos, cardData in pairs(predictedField) do
+        local y, x = string.match(pos, "(%d+),(%d+)")
+        x, y = tonumber(x), tonumber(y)
+        
+        -- Get the card data with flip state considered
+        local pathData = cardData.flipped and 
+                         getFlippedCardData(cardData.type, true) or 
+                         CARD_PATH_DATA[cardData.type]
+        
+        -- Check each direction for open paths
+        local adjacentPositions = {
+            {dir = DIRECTION.TOP, x = x, y = y - 1},
+            {dir = DIRECTION.RIGHT, x = x + 1, y = y},
+            {dir = DIRECTION.BOTTOM, x = x, y = y + 1},
+            {dir = DIRECTION.LEFT, x = x - 1, y = y}
+        }
+        
+        for _, adj in ipairs(adjacentPositions) do
+            -- Check if the edge has a path
+            if pathData.edges[adj.dir] then
+                -- Check if this edge is part of a dead end (single-direction path)
+                local isDeadEnd = true
+                
+                -- Find which path this edge belongs to
+                for _, path in ipairs(pathData.paths) do
+                    -- Check if this path contains our direction
+                    local containsDir = false
+                    for _, dir in ipairs(path) do
+                        if dir == adj.dir then
+                            containsDir = true
+                            break
+                        end
+                    end
+                    
+                    -- If this path contains our direction and has multiple connections, it's not a dead end
+                    if containsDir and #path > 1 then
+                        isDeadEnd = false
+                        break
+                    end
+                end
+                
+                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) then
+                    -- And if it's not already in our future tiles list
+                    if not isInFutureTiles(adj.x, adj.y) then
+                        -- Add to future tiles
+                        table.insert(futureTiles, {x = adj.x, y = adj.y})
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Calculate predicted hold capacity
+    local predictedHoldCapacity = 0
+    local tilesAdjacentToAlive = {}
+    
+    -- Check each future alive tile
+    for _, aliveTile in ipairs(futureTiles) do
+        -- Check all adjacent positions to this alive tile
+        local adjacentPositions = {
+            {x = aliveTile.x, y = aliveTile.y - 1}, -- top
+            {x = aliveTile.x + 1, y = aliveTile.y}, -- right
+            {x = aliveTile.x, y = aliveTile.y + 1}, -- bottom
+            {x = aliveTile.x - 1, y = aliveTile.y}  -- left
+        }
+        
+        -- Check each adjacent position
+        for _, adj in ipairs(adjacentPositions) do
+            local pos = adj.y .. "," .. adj.x
+            
+            -- If there's a card at this position and we haven't counted it yet
+            -- Skip the entrance tiles (y <= 2) as they shouldn't contribute to hold capacity
+            if predictedField[pos] and not tilesAdjacentToAlive[pos] and adj.y > 0 then
+                -- Mark this position as adjacent to an alive tile
+                tilesAdjacentToAlive[pos] = true
+                -- Each such tile contributes 1 to hold capacity
+                predictedHoldCapacity = predictedHoldCapacity + 1
+            end
+        end
+    end
+    
+    -- Return the predicted alive tiles count and hold capacity
+    return #futureTiles, predictedHoldCapacity
 end
