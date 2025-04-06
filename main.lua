@@ -238,7 +238,7 @@ local game = {
     
     -- Function to calculate how many cards to draw based on alive tiles
     calculateDrawAmount = function(aliveTilesCount)
-        return math.min(12, 2 + aliveTilesCount)
+        return math.min(12, 1 + aliveTilesCount)
     end
 }
 
@@ -259,7 +259,12 @@ local assets = {
 
 -- Check if a card can be placed at given grid coordinates
 function canPlaceCard(cardType, gridX, gridY, flipped)
-    -- First check: is this an "alive" tile?
+    -- First check: is this position outside the depth limits?
+    if isOutsideDepthLimits(gridX, gridY) then
+        return false
+    end
+    
+    -- Second check: is this an "alive" tile?
     local isAlive = false
     for _, tile in ipairs(game.aliveTiles) do
         if tile.x == gridX and tile.y == gridY then
@@ -272,7 +277,7 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
         return false
     end
     
-    -- Second check: do the edges match with adjacent cards (both permanent and planned)?
+    -- Third check: do the edges match with adjacent cards (both permanent and planned)?
     local cardData = flipped and getFlippedCardData(cardType, true) or CARD_PATH_DATA[cardType]
     
     -- Check each adjacent cell for compatibility
@@ -940,6 +945,32 @@ function updateAliveTiles()
             return false
         end
         
+        -- Get current day's depth goal and minimum depth
+        local depthGoal = 0
+        local minDepth = 0
+        
+        if story.messages[game.dayClock.day] then
+            depthGoal = story.messages[game.dayClock.day].depthgoal or 0
+            minDepth = story.messages[game.dayClock.day].mindepth or 0
+        end
+        
+        -- Convert depths to Y coordinates (depth/10)
+        local maxY = math.ceil(depthGoal / 10) + 2  -- Allow digging 20 meters (2 tiles) below the depth goal
+        local minY = math.floor(minDepth / 10)      -- Don't allow digging above the minimum depth
+        
+        -- Check depth limits - but only if we have a valid depth goal
+        if depthGoal > 0 then
+            -- Prevent tiles below maximum allowed depth
+            if y > maxY then
+                return false
+            end
+            
+            -- Prevent tiles above minimum required depth
+            if minDepth > 0 and y < minY then
+                return false
+            end
+        end
+        
         return true
     end
     
@@ -1444,6 +1475,32 @@ function predictAliveAndHoldCapacity()
             return false
         end
         
+        -- Get current day's depth goal and minimum depth
+        local depthGoal = 0
+        local minDepth = 0
+        
+        if story.messages[game.dayClock.day] then
+            depthGoal = story.messages[game.dayClock.day].depthgoal or 0
+            minDepth = story.messages[game.dayClock.day].mindepth or 0
+        end
+        
+        -- Convert depths to Y coordinates (depth/10)
+        local maxY = math.ceil(depthGoal / 10) + 2  -- Allow digging 20 meters (2 tiles) below the depth goal
+        local minY = math.floor(minDepth / 10)      -- Don't allow digging above the minimum depth
+        
+        -- Check depth limits - but only if we have a valid depth goal
+        if depthGoal > 0 then
+            -- Prevent tiles below maximum allowed depth
+            if y > maxY then
+                return false
+            end
+            
+            -- Prevent tiles above minimum required depth
+            if minDepth > 0 and y < minY then
+                return false
+            end
+        end
+        
         return true
     end
     
@@ -1593,6 +1650,15 @@ function startNewDay()
             setDayClockSegments(6)
         end
     end
+    
+    -- Recalculate alive tiles to respect the new day's depth limits
+    updateAliveTiles()
+    
+    -- Update maximum cards playable and holdable with the new alive tiles
+    game.shiftStartAliveTilesCount = #game.aliveTiles
+    game.currentHoldCapacity = calculateCurrentHoldCapacity()
+    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount, 7)
+    game.maxHoldCards = game.currentHoldCapacity
     
     -- Set isInitialStory flag to true when starting a new day
     game.isInitialStory = true
@@ -1745,4 +1811,61 @@ function calculateCurrentDepth()
     
     -- Convert Y position to depth (10 * Y)
     return maxY * 10
+end
+
+-- Helper function to check if a position is outside the game's depth limits
+function isOutsideDepthLimits(x, y)
+    -- Get current day's depth goal and minimum depth
+    local depthGoal = 220
+    local minDepth = 120
+    
+    if story.messages[game.dayClock.day] then
+        depthGoal = story.messages[game.dayClock.day].depthgoal
+        minDepth = story.messages[game.dayClock.day].mindepth
+    end
+    
+    -- Convert depths to Y coordinates (depth/10)
+        local maxY = math.ceil(depthGoal / 10) + 2  -- Allow digging 20 meters (2 tiles) below the depth goal
+    local minY = math.floor(minDepth / 10)      -- Don't allow digging above the minimum depth
+    
+    -- Check depth limits - but only if we have a valid depth goal
+    if depthGoal > 0 then
+        -- Tile is too deep
+        if y > maxY then
+            return true
+        end
+        
+        -- Tile is too shallow
+        if minDepth > 0 and y < minY then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Helper function to check if a position is within valid game boundaries
+function isWithinBoundaries(x, y)
+    -- Check horizontal boundaries
+    if x < -GAME_FIELD_WIDTH_EXTENSION or x >= GRID_COLS + GAME_FIELD_WIDTH_EXTENSION then
+        return false
+    end
+    
+    -- Check vertical boundaries - prevent tiles above the surface (y < 0)
+    if y < 0 or y >= GRID_ROWS + GAME_FIELD_DEPTH then
+        return false
+    end
+    
+    -- Check depth limits
+    if isOutsideDepthLimits(x, y) then
+        return false
+    end
+    
+    return true
+end
+
+-- Global helper function to check if a tile is empty
+function isTileEmpty(x, y)
+    local pos = y .. "," .. x
+    return game.field[pos] == nil and game.plannedCards[pos] == nil
 end

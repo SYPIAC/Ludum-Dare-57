@@ -15,6 +15,7 @@ local COLORS = {
 story.messages = {
     [1] = {
         title = "DAY 1",
+        mindepth = 0,
         depthgoal = 60,
         shifts = 6,
         content = {
@@ -32,6 +33,7 @@ story.messages = {
     },
     [2] = {
         title = "DAY 2",
+        mindepth = 0,
         depthgoal = 100,
         shifts = 6,
         content = {
@@ -46,6 +48,7 @@ story.messages = {
     },
     [3] = {
         title = "DAY 3",
+        mindepth = 0,
         depthgoal = 140,
         shifts = 6,
         content = {
@@ -67,7 +70,8 @@ story.messages = {
             "FOREMAN",
             "The crews demand **180 fathoms**",
             "Possibilities recede. Regrets mount. You will have less options",
-            "Grow wide and be ready. Tomorrow we complete our work",
+            "There are 5 cards in your deck that do nothing",
+            "Build wide and be ready. Tomorrow we complete our work",
             "There will be **6 shifts**"
         }
     },

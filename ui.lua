@@ -347,6 +347,15 @@ function ui.drawFieldGrid()
                 love.graphics.setFont(assets.smallFont)
                 love.graphics.print("+", x - 4, y - 8)
                 
+                -- Check if this tile is outside depth limits
+                local isOutsideDepth = isOutsideDepthLimits(col, row)
+                
+                -- Draw overlay for tiles outside depth limits
+                if isOutsideDepth and isTileEmpty(col, row) then
+                    love.graphics.setColor(unpack(COLORS.planned_overlay))
+                    love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                end
+                
                 -- Highlight "alive" tiles with a subtle glow
                 local isAlive = false
                 for _, tile in ipairs(game.aliveTiles) do
