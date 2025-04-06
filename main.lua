@@ -420,6 +420,9 @@ function love.update(dt)
     local drawButtonHeight = 30
     
     game.drawButtonHover = pointInRect(mx, my, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
+    
+    -- Update deck/discard hover states
+    ui.updateHoverStates(mx, my)
 end
 
 function love.mousepressed(x, y, button)

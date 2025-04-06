@@ -43,6 +43,10 @@ local assets = nil
 local viewport = nil
 local DIRECTION = nil
 
+-- Hover states for deck/discard UI
+local deckHover = false
+local discardHover = false
+
 -- Initialize the UI module with references to game state and assets
 function ui.init(gameState, gameAssets, viewportState, directionEnum)
     game = gameState
@@ -150,6 +154,13 @@ function ui.draw()
     local mx, my = love.mouse.getPosition()
     local gx, gy = ui.screenToGrid(mx, my)
     love.graphics.print("View: " .. viewport.offsetX .. "," .. viewport.offsetY .. " Mouse: " .. gx .. "," .. gy, 10, 10)
+    
+    -- Draw popup for deck or discard if hovering
+    if deckHover then
+        ui.drawCardDistributionPopup(game.deck.cards, SCREEN_WIDTH - 96, FIELD_HEIGHT - 10)
+    elseif discardHover then
+        ui.drawCardDistributionPopup(game.discard.cards, SCREEN_WIDTH - 48, FIELD_HEIGHT - 10)
+    end
 end
 
 -- Function to draw the status bar
@@ -335,6 +346,142 @@ end
 -- These are UI helper functions that might be needed
 function ui.canPlaceCard(cardType, gridX, gridY, flipped)
     return game.canPlaceCard(cardType, gridX, gridY, flipped)
+end
+
+-- Check for hover over deck and discard piles
+function ui.updateHoverStates(mouseX, mouseY)
+    local deckX = SCREEN_WIDTH - 96
+    local discardX = SCREEN_WIDTH - 48
+    local deckY = FIELD_HEIGHT + 10
+    
+    -- Check for deck hover
+    deckHover = mouseX >= deckX and mouseX <= deckX + CARD_WIDTH and
+                mouseY >= deckY and mouseY <= deckY + CARD_HEIGHT
+    
+    -- Check for discard hover
+    discardHover = mouseX >= discardX and mouseX <= discardX + CARD_WIDTH and
+                  mouseY >= deckY and mouseY <= deckY + CARD_HEIGHT
+end
+
+-- Draw popup showing card distribution in deck or discard
+function ui.drawCardDistributionPopup(cardList, anchorX, anchorY)
+    -- Count occurrences of each card type
+    local cardCounts = {}
+    local totalCards = 0
+    
+    -- Initialize counts to zero for all card types
+    for cardType, _ in pairs(assets.cards) do
+        cardCounts[cardType] = 0
+    end
+    
+    -- Count cards in the provided list
+    for _, cardItem in ipairs(cardList) do
+        -- If it's a direct card type (as in deck/discard)
+        if type(cardItem) == "string" then
+            cardCounts[cardItem] = cardCounts[cardItem] + 1
+            totalCards = totalCards + 1
+        end
+    end
+    
+    -- Define popup dimensions
+    local popupWidth = 300
+    local cardSpacing = 10
+    local cardsPerRow = 3
+    local cardDisplayHeight = CARD_HEIGHT * 0.6 -- Show cards at 60% height in the popup
+    local cardDisplayWidth = CARD_WIDTH * 0.6
+    local rowHeight = cardDisplayHeight + cardSpacing
+    
+    -- Get ordered card types (preserving original definition order)
+    local orderedCardTypes = {}
+    
+    -- First add single path cards in order
+    table.insert(orderedCardTypes, "path_1_1a")
+    table.insert(orderedCardTypes, "path_1_1b")
+    
+    -- Add 2-edge, 1-path cards
+    table.insert(orderedCardTypes, "path_2_1a")
+    table.insert(orderedCardTypes, "path_2_1b")
+    table.insert(orderedCardTypes, "path_2_1c")
+    table.insert(orderedCardTypes, "path_2_1d")
+    
+    -- Add 3-edge, 1-path cards
+    table.insert(orderedCardTypes, "path_3_1a")
+    table.insert(orderedCardTypes, "path_3_1b")
+    
+    -- Add 4-edge, 1-path card
+    table.insert(orderedCardTypes, "path_4_1")
+    
+    -- Add 2-edge, 2-path cards
+    table.insert(orderedCardTypes, "path_2_2a")
+    table.insert(orderedCardTypes, "path_2_2b")
+    table.insert(orderedCardTypes, "path_2_2c")
+    table.insert(orderedCardTypes, "path_2_2d")
+    
+    -- Add 3-edge, 3-path cards
+    table.insert(orderedCardTypes, "path_3_3a")
+    table.insert(orderedCardTypes, "path_3_3b")
+    
+    -- Add 4-edge, 4-path card
+    table.insert(orderedCardTypes, "path_4_4")
+    
+    -- Calculate number of rows needed
+    local cardTypeCount = #orderedCardTypes
+    local numRows = math.ceil(cardTypeCount / cardsPerRow)
+    local popupHeight = numRows * rowHeight + 30 -- Add padding
+    
+    -- Position popup appropriately relative to the anchor point
+    -- Ensure it's within the game window
+    local popupX = math.max(10, math.min(anchorX - popupWidth / 2, SCREEN_WIDTH - popupWidth - 10))
+    
+    -- For deck, show popup above the hand area but below the top bar
+    local popupY = math.max(50, FIELD_HEIGHT - popupHeight - 10)
+    
+    -- Ensure it doesn't go off the right side
+    if popupX + popupWidth > SCREEN_WIDTH - STATUS_BAR_WIDTH then
+        popupX = SCREEN_WIDTH - STATUS_BAR_WIDTH - popupWidth - 5
+    end
+    
+    -- Draw popup background
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.9)
+    love.graphics.rectangle("fill", popupX, popupY, popupWidth, popupHeight, 8, 8)
+    love.graphics.setColor(0.6, 0.6, 0.6)
+    love.graphics.rectangle("line", popupX, popupY, popupWidth, popupHeight, 8, 8)
+    
+    -- Draw title
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(assets.smallFont)
+    local titleText = "Cards: " .. totalCards
+    love.graphics.printf(titleText, popupX, popupY + 8, popupWidth, "center")
+    
+    -- Draw cards in grid layout with consistent order
+    for i, cardType in ipairs(orderedCardTypes) do
+        local count = cardCounts[cardType] or 0
+        local row = math.floor((i-1) / cardsPerRow)
+        local col = (i-1) % cardsPerRow
+        
+        local x = popupX + 20 + col * (cardDisplayWidth + 20)
+        local y = popupY + 25 + row * rowHeight
+        
+        -- Draw card
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.draw(
+            assets.cards[cardType],
+            x, y,
+            0,  -- rotation
+            0.6, 0.6  -- scale to 60% size
+        )
+        
+        -- Grey overlay for cards not in deck/discard
+        if count == 0 then
+            love.graphics.setColor(0.5, 0.5, 0.5, 0.7)
+            love.graphics.rectangle("fill", x, y, cardDisplayWidth, cardDisplayHeight)
+        end
+        
+        -- Draw count text
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setFont(assets.smallFont)
+        love.graphics.print("x" .. count, x + cardDisplayWidth + 2, y + cardDisplayHeight / 2 - 6)
+    end
 end
 
 -- Return the UI module
