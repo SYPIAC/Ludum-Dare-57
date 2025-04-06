@@ -211,10 +211,10 @@ local story = require("story") -- Add the story module import
 
 -- Game state
 local game = {
-    cards = {},      -- Cards in hand
-    dragging = nil,  -- Card being dragged
-    field = {},      -- Placed cards on field
-    plannedCards = {},  -- Cards planned for placement but not yet built
+    cards = {},      -- Current cards in player's hand
+    dragging = nil,  -- Currently dragged card
+    field = {},      -- Cards permanently placed on the field
+    plannedCards = {}, -- Cards marked as planned but not yet built
     deck = {         -- Deck of cards
         cards = {},  -- Actual card types in the deck
         count = 0,   -- Number of cards in deck
@@ -245,6 +245,11 @@ local game = {
     isGameOver = false,  -- Flag to track if the game is over
     isDayOver = false,   -- Flag to track if a day has ended due to running out of cards
     isInitialStory = true,  -- Flag to track if we're showing the initial story for a day
+    helpMenu = {        -- Help menu state
+        visible = false,     -- Is the help menu currently visible
+        buttonHover = false, -- Is mouse hovering over help button
+        showAfterStory = true  -- Flag to show help menu after initial story
+    },
     
     -- Function to calculate how many cards to draw based on alive tiles
     calculateDrawAmount = function(aliveTilesCount)
@@ -259,12 +264,20 @@ function game.over(reason)
     print("GAME OVER: " .. (reason or "Unknown reason"))
 end
 
--- Load assets
+-- Game assets
 local assets = {
-    cards = {},  -- Will hold all card images
-    font = nil,
-    smallFont = nil,
-    sounds = {} -- Will hold sound effects
+    cards = {},      -- Card images
+    font = nil,      -- Main font
+    smallFont = nil, -- Small font for UI elements
+    sounds = {       -- Sound effects
+        dayStart = nil, -- Sound to play when day starts
+        dig1 = nil,     -- Sound for digging 1
+        dig2 = nil,     -- Sound for digging 2
+        dig3 = nil,     -- Sound for digging 3
+        shiftEnd1 = nil, -- Sound for end of shift 1
+        shiftEnd2 = nil  -- Sound for end of shift 2
+    },
+    helpMenu = nil   -- Help menu image
 }
 
 -- Check if a card can be placed at given grid coordinates
@@ -374,6 +387,9 @@ function love.load()
         assets.cards[type] = love.graphics.newImage("img/" .. filename)
     end
     
+    -- Load help menu image
+    assets.helpMenu = love.graphics.newImage("img/help_menu.png")
+    
     -- Load sound effects
     assets.sounds.dayStart = love.audio.newSource("sounds/foreman.wav", "static")
     -- Set initial volume to very high (values > 1.0 are allowed and make it louder)
@@ -460,6 +476,20 @@ function screenToGrid(screenX, screenY)
 end
 
 function love.update(dt)
+    -- Don't update when game is over or day over screen is showing
+    if game.isGameOver or game.isDayOver then
+        return
+    end
+    
+    -- Get mouse position
+    local mouseX, mouseY = love.mouse.getPosition()
+    
+    -- Update ui hover states
+    ui.updateHoverStates(mouseX, mouseY)
+    
+    -- Update help button hover state
+    ui.updateHelpButtonHover(mouseX, mouseY)
+    
     -- Handle card dragging
     if game.dragging then
         game.dragging.x = love.mouse.getX() - CARD_WIDTH / 2
@@ -468,7 +498,6 @@ function love.update(dt)
     
     -- Handle viewport dragging
     if viewport.dragging then
-        local mouseX, mouseY = love.mouse.getPosition()
         local dx = mouseX - viewport.lastMouseX
         local dy = mouseY - viewport.lastMouseY
         
@@ -505,22 +534,34 @@ function love.update(dt)
     local drawButtonHeight = 30
     
     game.drawButtonHover = pointInRect(mx, my, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
-    
-    -- Update deck/discard hover states
-    ui.updateHoverStates(mx, my)
 end
 
-function love.mousepressed(x, y, button, istouch, presses)
-    -- Check if day is over or game is over - handle clicks to continue
+-- Mouse pressed callback
+function love.mousepressed(x, y, button)
+    -- Don't process clicks when game is over
+    if game.isGameOver then
+        return
+    end
+    
+    -- Handle click when day over screen is showing
     if game.isDayOver then
-        if button == 1 then  -- Left mouse button
+        if button == 1 then -- Left mouse button
             handleDayOverClick()
         end
         return
     end
     
-    if game.isGameOver then
-        -- Currently, the only way to restart is to refresh the page
+    -- Check if help menu is visible
+    if game.helpMenu.visible then
+        if button == 1 then -- Left mouse button
+            game.helpMenu.visible = false -- Close help menu
+        end
+        return
+    end
+    
+    -- Check if help button was clicked
+    if game.helpMenu.buttonHover and button == 1 then
+        game.helpMenu.visible = true
         return
     end
     
@@ -609,7 +650,13 @@ function love.mousepressed(x, y, button, istouch, presses)
     end
 end
 
+-- Mouse released callback
 function love.mousereleased(x, y, button)
+    -- Don't process when game is over or day over screen is showing
+    if game.isGameOver or game.isDayOver or game.helpMenu.visible then
+        return
+    end
+    
     if button == 1 then  -- Left mouse button
         -- Stop viewport dragging
         viewport.dragging = false
@@ -855,8 +902,8 @@ function endShift()
     -- Draw new cards for this shift
     local drawAmount = game.calculateDrawAmount(#game.aliveTiles)
     
-    -- If we can't draw any cards, end the day
-    if drawAmount <= 0 or #game.deck.cards < drawAmount then
+    -- Only end the day if we have absolutely no cards available
+    if drawAmount <= 0 or #game.deck.cards == 0 then
         game.endDay("Run out of cards")
         return
     end
@@ -1204,7 +1251,7 @@ function discardHand()
     -- Reset play count for the new round
     game.playCount = 0
     
-    -- If deck is empty but discard has cards, end the day instead of reshuffling
+    -- Only end the day if the deck is completely empty
     if game.deck.count == 0 and game.discard.count > 0 then
         game.endDay("Run out of cards")
     end
@@ -1236,8 +1283,8 @@ function drawCardsFromDeck(numCards)
     -- Limit by how many cards are actually available
     numCards = math.min(numCards, game.deck.count)
     
-    -- If deck is empty but discard has cards, end the day instead of reshuffling
-    if numCards > 0 and game.deck.count == 0 and game.discard.count > 0 then
+    -- Only end the day if we have absolutely no cards to draw
+    if game.deck.count == 0 and game.discard.count > 0 then
         game.endDay("Run out of cards")
         return 0
     end
@@ -1716,17 +1763,23 @@ function handleDayOverClick()
         game.isDayOver = false
         game.dayClock.day = 1
         game.dayClock.segmentsUsed = 0
-        
-        -- Show the day 1 story
+    
+    -- Show the day 1 story
         startNewDay()
     else
+        -- If this is day 1 and the initial story, set up the help menu to be shown after
+        if game.dayClock.day == 1 and game.isInitialStory then
+            game.helpMenu.visible = true
+            game.helpMenu.showAfterStory = false  -- Only show once
+        end
+        
         -- If this is the initial story for the day, just start playing
         if game.isInitialStory then
             game.isDayOver = false
             game.isInitialStory = false
             return
         end
-        
+
         -- Otherwise, it's the end of the day - prepare for the next
         game.isDayOver = false
         
@@ -1742,10 +1795,10 @@ function handleDayOverClick()
         if depthGoal > 0 and currentDepth < depthGoal then
             game.isGameOver = true
             game.gameOverReason = "Failed to reach the depth goal of " .. depthGoal .. " fathoms"
-            return
-        end
-        
-        -- Check if game over (any danger tiles remaining)
+        return
+    end
+    
+    -- Check if game over (any danger tiles remaining)
         if #game.dangerTiles > 0 then
             game.isGameOver = true
             game.gameOverReason = "Danger tiles remained at the end of the day"

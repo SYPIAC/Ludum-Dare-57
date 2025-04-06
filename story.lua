@@ -49,11 +49,11 @@ story.messages = {
     [3] = {
         title = "DAY 3",
         mindepth = 0,
-        depthgoal = 140,
+        depthgoal = 130,
         shifts = 6,
         content = {
             "FOREMAN",
-            "We aim for **140 fathoms**",
+            "We aim for **130 fathoms**",
             "Then the depths can truly begin",
             "We must leave the surface soil behind",
             "After today, there will be no more work above 120 fathoms",
@@ -64,11 +64,11 @@ story.messages = {
     [4] = {
         title = "DAY 4",
         mindepth = 120,
-        depthgoal = 180,
+        depthgoal = 170,
         shifts = 6,
         content = {
             "FOREMAN",
-            "The crews demand **180 fathoms**",
+            "The crews demand **170 fathoms**",
             "Possibilities recede. Regrets mount. You will have less options",
             "There are 5 cards in your deck that do nothing",
             "Build wide and be ready. Tomorrow we complete our work",
@@ -77,12 +77,12 @@ story.messages = {
     },
     [5] = {
         title = "DAY 5",
-        mindepth = 160,
-        depthgoal = 220,
+        mindepth = 140,
+        depthgoal = 210,
         shifts = 5,
         content = {
             "FOREMAN",
-            "**220 fathoms**",
+            "**210 fathoms**",
             "The final push",
             "The heat and the distance prove a problem",
             "Today there will be only **5 shifts**",
@@ -91,8 +91,8 @@ story.messages = {
     },
     [6] = {
         title = "YOU WIN",
-        mindepth = 160,
-        depthgoal = 220,
+        mindepth = 140,
+        depthgoal = 210,
         shifts = 4,
         content = {
             "FOREMAN",

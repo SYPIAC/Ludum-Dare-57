@@ -40,7 +40,7 @@ local COLORS = {
     clock_face = {1, 1, 0},        -- Yellow for clock face
     clock_segment_used = {0, 0, 0}, -- Black for used clock segments
     clock_dividers = {0.5, 0.5, 0.5}, -- Gray for clock segment dividers
-    planned_overlay = {0.5, 0.5, 0.5, 0.5}, -- Semi-transparent gray for planned cards
+    planned_overlay = {0.5, 0.5, 0.5, 0.8}, -- Semi-transparent gray for planned cards
     positive = {0, 1, 0}, -- Green for positive numbers
     negative = {1, 0, 0}  -- Red for negative numbers
 }
@@ -103,11 +103,11 @@ function ui.draw()
     
     -- Draw deck space
     love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("fill", SCREEN_WIDTH - 96, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
+    love.graphics.rectangle("fill", SCREEN_WIDTH - 100, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
     love.graphics.setColor(0, 0, 0)
     love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("deck", SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
-    love.graphics.printf("x" .. game.deck.count, SCREEN_WIDTH - 96, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    love.graphics.printf("deck", SCREEN_WIDTH - 100, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.deck.count, SCREEN_WIDTH - 100, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
 
     -- Draw discard space
     love.graphics.setColor(1, 1, 1)
@@ -262,6 +262,9 @@ function ui.draw()
         ui.drawCardDistributionPopup(game.discard.cards, SCREEN_WIDTH - 48, FIELD_HEIGHT - 10)
     end
     
+    -- Draw help button in top right corner
+    ui.drawHelpButton()
+    
     -- Draw game over overlay if the game is over
     if game.isGameOver then
         story.drawGameOverOverlay()
@@ -270,6 +273,11 @@ function ui.draw()
     -- Draw day over overlay if the game is over
     if game.isDayOver then
         story.drawStoryOverlay()
+    end
+    
+    -- Draw help menu overlay if visible
+    if game.helpMenu.visible then
+        ui.drawHelpMenuOverlay()
     end
 end
 
@@ -825,6 +833,76 @@ function ui.drawPieSegment(centerX, centerY, radius, startAngle, endAngle)
     
     -- Draw the filled polygon
     love.graphics.polygon("fill", vertices)
+end
+
+-- Draw help button in the top right corner
+function ui.drawHelpButton()
+    local buttonSize = 30
+    local buttonX = SCREEN_WIDTH - buttonSize - 5
+    local buttonY = 5
+    
+    -- Draw button background
+    if game.helpMenu.buttonHover then
+        love.graphics.setColor(0.7, 0.7, 1, 0.8)  -- Light blue when hovering
+    else
+        love.graphics.setColor(0.5, 0.5, 0.9, 0.7)  -- Blue normally
+    end
+    love.graphics.rectangle("fill", buttonX, buttonY, buttonSize, buttonSize, 5, 5)
+    
+    -- Draw "?" text
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(assets.font)
+    local text = "?"
+    local textWidth = assets.font:getWidth(text)
+    local textHeight = assets.font:getHeight()
+    love.graphics.print(text, buttonX + buttonSize/2 - textWidth/2, buttonY + buttonSize/2 - textHeight/2)
+end
+
+-- Draw help menu overlay that displays the help_menu.png image
+function ui.drawHelpMenuOverlay()
+    -- Semi-transparent black background
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    
+    -- Draw the help menu image centered on screen
+    love.graphics.setColor(1, 1, 1)
+    local helpImage = assets.helpMenu
+    local imgWidth = helpImage:getWidth()
+    local imgHeight = helpImage:getHeight()
+    local screenWidth = love.graphics.getWidth()
+    local screenHeight = love.graphics.getHeight()
+    
+    -- Scale image if needed to fit on screen
+    local scale = 0.95
+    
+    -- Draw image centered on screen
+    love.graphics.draw(
+        helpImage, 
+        screenWidth/2, 
+        screenHeight/2, 
+        0,             -- rotation
+        scale, scale,  -- scale
+        imgWidth/2,    -- origin x (center of image) 
+        imgHeight/2    -- origin y (center of image)
+    )
+    
+    -- Draw close instructions at bottom
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.setFont(assets.font)
+    local text = "Click anywhere to close"
+    local textWidth = assets.font:getWidth(text)
+    love.graphics.print(text, screenWidth/2 - textWidth/2, screenHeight - 50)
+end
+
+-- Check for hover over help button
+function ui.updateHelpButtonHover(mouseX, mouseY)
+    local buttonSize = 30
+    local buttonX = SCREEN_WIDTH - buttonSize - 5
+    local buttonY = 5
+    
+    -- Check if mouse is over help button
+    game.helpMenu.buttonHover = mouseX >= buttonX and mouseX <= buttonX + buttonSize and
+                                mouseY >= buttonY and mouseY <= buttonY + buttonSize
 end
 
 -- Return the UI module
