@@ -364,6 +364,20 @@ function love.load()
     -- Set initial volume to very high (values > 1.0 are allowed and make it louder)
     assets.sounds.dayStart:setVolume(2.0)
     
+    -- Load dig sounds
+    assets.sounds.dig1 = love.audio.newSource("sounds/dig.wav", "static")
+    assets.sounds.dig2 = love.audio.newSource("sounds/dig2.wav", "static")
+    assets.sounds.dig3 = love.audio.newSource("sounds/dig3.wav", "static")
+    assets.sounds.dig1:setVolume(1.5)
+    assets.sounds.dig2:setVolume(1.5)
+    assets.sounds.dig3:setVolume(1.5)
+    
+    -- Load shift end sounds
+    assets.sounds.shiftEnd1 = love.audio.newSource("sounds/shift_end1.wav", "static")
+    assets.sounds.shiftEnd2 = love.audio.newSource("sounds/shift_end2.wav", "static")
+    assets.sounds.shiftEnd1:setVolume(1.5)
+    assets.sounds.shiftEnd2:setVolume(1.5)
+    
     -- Set up the canPlaceCard function reference
     game.canPlaceCard = canPlaceCard
     
@@ -720,6 +734,9 @@ function love.mousereleased(x, y, button)
                             rotation = 0  -- No rotation for now
                         }
                         
+                        -- Play a random dig sound when planning a card
+                        playDigSound()
+                        
                         -- Increment play count
                         game.playCount = game.playCount + 1
                         
@@ -772,6 +789,9 @@ function endShift()
     if game.isGameOver then
         return
     end
+    
+    -- Play a random shift end sound
+    playShiftEndSound()
     
     -- First, build all planned cards (move them to the field)
     for pos, cardData in pairs(game.plannedCards) do
@@ -1061,13 +1081,13 @@ function generateDeck()
     
     -- Straight and curve paths
     for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1A) end
-    for i = 1, 3 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1B) end
+    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1B) end
     for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1C) end
     for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1D) end
     
     -- T-junctions
-    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1A) end
-    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1B) end
+    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1A) end
+    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1B) end
     
     -- Cross junction
     for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_4_1) end
@@ -1654,4 +1674,28 @@ function processEndOfDay()
     -- Draw cards for the new day
     local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
+end
+
+-- Function to play random dig sound when planning a card
+function _G.playDigSound()
+    -- Pick a random dig sound (1-3)
+    local randomSound = love.math.random(1, 3)
+    local sound = assets.sounds["dig" .. randomSound]
+    
+    -- Stop any previously playing dig sound
+    sound:stop()
+    -- Play the sound
+    sound:play()
+end
+
+-- Function to play random shift end sound
+function _G.playShiftEndSound()
+    -- Pick a random shift end sound (1-2)
+    local randomSound = love.math.random(1, 2)
+    local sound = assets.sounds["shiftEnd" .. randomSound]
+    
+    -- Stop any previously playing shift end sound
+    sound:stop()
+    -- Play the sound
+    sound:play()
 end
