@@ -250,7 +250,8 @@ end
 local assets = {
     cards = {},  -- Will hold all card images
     font = nil,
-    smallFont = nil
+    smallFont = nil,
+    sounds = {} -- Will hold sound effects
 }
 
 -- Check if a card can be placed at given grid coordinates
@@ -355,6 +356,9 @@ function love.load()
         assets.cards[type] = love.graphics.newImage("img/" .. filename)
     end
     
+    -- Load sound effects
+    assets.sounds.dayStart = love.audio.newSource("sounds/foreman.wav", "static")
+    
     -- Set up the canPlaceCard function reference
     game.canPlaceCard = canPlaceCard
     
@@ -384,6 +388,9 @@ function love.load()
     -- Draw initial hand (held cards are 0 at the beginning)
     local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
+    
+    -- Play the day start sound for the first day
+    playDayStartSound()
 end
 
 function updateHandPositions()
@@ -507,6 +514,9 @@ function love.mousepressed(x, y, button, istouch, presses)
         
         -- Reset the day over flag
         game.isDayOver = false
+        
+        -- Play the day start sound
+        playDayStartSound()
         
         return
     end
@@ -767,6 +777,11 @@ function love.keypressed(key)
     if key == "d" then
         -- Debug key to test advancing the day clock
         advanceDayClock()
+    elseif key == "e" then
+        -- End the current shift when 'e' is pressed
+        if not game.isGameOver and not game.isDayOver then
+            endShift()
+        end
     end
 end
 
@@ -1206,6 +1221,9 @@ function advanceDayClock()
             -- Set new danger tiles for the next day
             setDangerTiles()
             
+            -- Play the day start sound
+            playDayStartSound()
+            
             return true  -- Return true to indicate a day change
         end
     end
@@ -1537,4 +1555,12 @@ end
 function game.endDay()
     game.isDayOver = true
     print("DAY OVER: Run out of cards")
+end
+
+-- Function to play the day start sound
+function playDayStartSound()
+    -- Stop the sound if it's already playing
+    assets.sounds.dayStart:stop()
+    -- Play the sound from the beginning
+    assets.sounds.dayStart:play()
 end

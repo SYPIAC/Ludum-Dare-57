@@ -110,9 +110,9 @@ function ui.draw()
     love.graphics.printf("x" .. game.discard.count, SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
     
     -- Draw draw button
-    local drawButtonX = SCREEN_WIDTH - 48
+    local drawButtonX = SCREEN_WIDTH - 96
     local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
-    local drawButtonWidth = CARD_WIDTH
+    local drawButtonWidth = CARD_WIDTH * 2
     local drawButtonHeight = 30
     
     if game.drawButtonHover then
@@ -123,7 +123,7 @@ function ui.draw()
     love.graphics.rectangle("fill", drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
     love.graphics.setColor(0, 0, 0)
     love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("END SHIFT", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
+    love.graphics.printf("END SHIFT (E)", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
     
     -- Add predicted draw information below button
     local predictedAliveTiles, predictedHoldCapacity, dangerTiles = predictAliveAndHoldCapacity()
