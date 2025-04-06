@@ -394,7 +394,8 @@ function love.load()
     love.math.setRandomSeed(os.time())
     
     -- Initialize the day clock
-    setDayClockSegments(6)  -- Start with 6 segments by default
+    local day1Shifts = story.messages[1] and story.messages[1].shifts or 6
+    setDayClockSegments(day1Shifts)  -- Use shifts from day 1 story or default to 6
     
     -- Initialize tracking values for alive tiles and hold capacity
     game.shiftStartAliveTilesCount = #game.aliveTiles
@@ -483,9 +484,9 @@ function love.update(dt)
     
     -- Check if mouse is hovering over draw button
     local mx, my = love.mouse.getPosition()
-    local drawButtonX = SCREEN_WIDTH - 48
+    local drawButtonX = SCREEN_WIDTH - 96
     local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
-    local drawButtonWidth = CARD_WIDTH
+    local drawButtonWidth = CARD_WIDTH * 2
     local drawButtonHeight = 30
     
     game.drawButtonHover = pointInRect(mx, my, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
@@ -1572,12 +1573,13 @@ function startNewDay()
     
     -- Update the day clock for the new day
     if game.dayClock.day > 1 then -- Skip for first day which is set in love.load
-        -- Handle setting day clock segments based on the day
-        if game.dayClock.day == 5 then
-            -- Day 5 has only 5 segments (as mentioned in the story)
-            setDayClockSegments(5)
+        -- Get shifts from story module for the current day
+        local dayStory = story.messages[game.dayClock.day]
+        if dayStory and dayStory.shifts then
+            -- Use the shifts value from the story module
+            setDayClockSegments(dayStory.shifts)
         else
-            -- Default is 6 segments for other days
+            -- Default is 6 segments if not specified
             setDayClockSegments(6)
         end
     end

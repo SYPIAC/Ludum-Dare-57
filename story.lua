@@ -15,6 +15,8 @@ local COLORS = {
 story.messages = {
     [1] = {
         title = "DAY 1",
+        depthgoal = 60,
+        shifts = 6,
         content = {
             "FOREMAN",
             "You must dig **60 fathoms** deep",
@@ -30,6 +32,8 @@ story.messages = {
     },
     [2] = {
         title = "DAY 2",
+        depthgoal = 100,
+        shifts = 6,
         content = {
             "FOREMAN",
             "You must reach **100 fathoms**. Failure is defeat",
@@ -42,6 +46,8 @@ story.messages = {
     },
     [3] = {
         title = "DAY 3",
+        depthgoal = 140,
+        shifts = 6,
         content = {
             "FOREMAN",
             "We aim for **140 fathoms**",
@@ -54,9 +60,11 @@ story.messages = {
     },
     [4] = {
         title = "DAY 4",
+        depthgoal = 180,
+        shifts = 6,
         content = {
             "FOREMAN",
-            "The crews demand **170 fathoms**",
+            "The crews demand **180 fathoms**",
             "Possibilities recede. Regrets mount. You will have less options",
             "Grow wide and be ready. Tomorrow we complete our work",
             "There will be **6 shifts**"
@@ -64,13 +72,28 @@ story.messages = {
     },
     [5] = {
         title = "DAY 5",
+        depthgoal = 220,
+        shifts = 5,
         content = {
             "FOREMAN",
-            "**200 fathoms**",
+            "**220 fathoms**",
             "The final push",
             "The heat and the distance prove a problem",
             "Today there will be only **5 shifts**",
             "We will win or die trying"
+        }
+    },
+    [6] = {
+        title = "YOU WIN",
+        depthgoal = 220,
+        shifts = 4,
+        content = {
+            "FOREMAN",
+            "You have reached the final depth",
+            "You win",
+            "You can keep going, if you want",
+            "But no more rewards await you",
+            "There will be **4 shifts**"
         }
     }
 }
