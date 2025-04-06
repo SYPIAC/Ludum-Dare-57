@@ -796,39 +796,68 @@ function ui.drawDayOverOverlay()
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
     
-    -- Day over text
-    love.graphics.setColor(0.2, 0.6, 1) -- Blue color for day over
-    love.graphics.setFont(assets.font)
-    local text = "DAY OVER"
-    local textW = assets.font:getWidth(text)
-    local textH = assets.font:getHeight()
-    
-    -- Draw text centered on screen
-    love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
-    
-    -- Instruction text - use the reason from the game state
-    love.graphics.setColor(1, 1, 1)
-    local infoText = ""
-    
-    -- Check what the reason for the day ending was
-    if game.dayOverReason == "Used all shifts for the day" then
-        infoText = "You've used all available shifts for today"
+    -- Check if this is day 0 (story mode)
+    if game.dayClock and game.dayClock.day == 0 then
+        -- Story title
+        love.graphics.setColor(0.8, 0.8, 1) -- Light blue for story
+        love.graphics.setFont(assets.font)
+        local text = "STORY"
+        local textW = assets.font:getWidth(text)
+        local textH = assets.font:getHeight()
+        
+        -- Draw title centered on screen
+        love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/3 - textH/2)
+        
+        -- Story text - use the dayOverReason as the story content
+        love.graphics.setColor(1, 1, 1)
+        
+        -- Draw story text with word wrapping
+        love.graphics.printf(game.dayOverReason, SCREEN_WIDTH/6, SCREEN_HEIGHT/2 - textH/2, 
+                           2*SCREEN_WIDTH/3, "center")
+        
+        -- Continue instructions
+        love.graphics.setColor(0.8, 0.8, 1)
+        local continueText = "Click anywhere to begin"
+        local continueW = assets.font:getWidth(continueText)
+        
+        -- Draw continue text at bottom
+        love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT*2/3 + textH)
     else
-        infoText = "You've run out of cards for the day"
+        -- Regular day over screen
+        -- Day over text
+        love.graphics.setColor(0.2, 0.6, 1) -- Blue color for day over
+        love.graphics.setFont(assets.font)
+        local text = "DAY OVER"
+        local textW = assets.font:getWidth(text)
+        local textH = assets.font:getHeight()
+        
+        -- Draw text centered on screen
+        love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
+        
+        -- Instruction text - use the reason from the game state
+        love.graphics.setColor(1, 1, 1)
+        local infoText = ""
+        
+        -- Check what the reason for the day ending was
+        if game.dayOverReason == "Used all shifts for the day" then
+            infoText = "You've used all available shifts for today"
+        else
+            infoText = "You've run out of cards for the day"
+        end
+        
+        local infoW = assets.font:getWidth(infoText)
+        
+        -- Draw info text below day over text
+        love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
+        
+        -- Continue instructions
+        love.graphics.setColor(0.8, 0.8, 1)
+        local continueText = "Click anywhere to continue to the next day"
+        local continueW = assets.font:getWidth(continueText)
+        
+        -- Draw continue text below info text
+        love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT/2 + textH*3)
     end
-    
-    local infoW = assets.font:getWidth(infoText)
-    
-    -- Draw info text below day over text
-    love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
-    
-    -- Continue instructions
-    love.graphics.setColor(0.8, 0.8, 1)
-    local continueText = "Click anywhere to continue to the next day"
-    local continueW = assets.font:getWidth(continueText)
-    
-    -- Draw continue text below info text
-    love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT/2 + textH*3)
 end
 
 -- Return the UI module

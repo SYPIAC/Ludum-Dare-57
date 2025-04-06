@@ -391,6 +391,9 @@ function love.load()
     
     -- Play the day start sound for the first day
     playDayStartSound()
+    
+    -- Show the story screen at the start of the game
+    showStoryScreen("Welcome to Deep Dig! You're the new foreman at the mine. Your job is to expand the mine network using path cards. Connect paths strategically to maximize efficiency. Click anywhere to begin your first day.")
 end
 
 function updateHandPositions()
@@ -1563,6 +1566,15 @@ function game.endDay(reason)
     game.isDayOver = true
     print("DAY OVER: " .. (reason or "Run out of cards"))
     game.dayOverReason = reason or "Run out of cards"
+end
+
+-- Function to show a story screen by simulating a day over screen
+function showStoryScreen(storyText)
+    game.isDayOver = true
+    game.dayOverReason = storyText or "Story Introduction"
+    -- Set day to 0 for story mode
+    game.dayClock.day = 0
+    print("STORY SCREEN: Showing story for day 0")
 end
 
 -- Function to play the day start sound
