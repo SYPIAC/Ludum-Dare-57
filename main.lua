@@ -232,6 +232,7 @@ local game = {
         day = 1                 -- Current day
     },
     isGameOver = false,  -- Flag to track if the game is over
+    isDayOver = false,   -- Flag to track if a day has ended due to running out of cards
     
     -- Function to calculate how many cards to draw based on alive tiles
     calculateDrawAmount = function(aliveTilesCount)
@@ -380,7 +381,7 @@ function love.load()
     
     -- Don't initialize danger tiles at the start - let them be set at the end of the first day
     
-    -- Draw initial hand using the same formula as endShift
+    -- Draw initial hand (held cards are 0 at the beginning)
     local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
 end
@@ -467,9 +468,46 @@ function love.update(dt)
     ui.updateHoverStates(mx, my)
 end
 
-function love.mousepressed(x, y, button)
-    -- If the game is over, don't allow interaction
+function love.mousepressed(x, y, button, istouch, presses)
+    -- Don't register mouse presses if the game is over
     if game.isGameOver then
+        return
+    end
+    
+    -- If the day is over and the player clicks anywhere, advance to the next day
+    if game.isDayOver then
+        -- Advance to the next day
+        game.dayClock.day = game.dayClock.day + 1
+        game.dayClock.remainingSegments = game.dayClock.totalSegments
+        
+        -- Clear any remaining cards from discard and hand
+        game.discard.cards = {}
+        game.discard.count = 0
+        game.cards = {} -- Clear hand
+        game.holdCount = 0
+        
+        -- Regenerate the deck for the new day
+        generateDeck()
+        
+        -- Set new danger tiles for the next day
+        setDangerTiles()
+        
+        -- Recalculate alive tiles
+        updateAliveTiles()
+        
+        -- Update maximum cards playable and holdable
+        game.shiftStartAliveTilesCount = #game.aliveTiles
+        game.currentHoldCapacity = calculateCurrentHoldCapacity()
+        game.maxPlayCards = game.shiftStartAliveTilesCount
+        game.maxHoldCards = game.currentHoldCapacity
+        
+        -- Draw cards for the new day
+        local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
+        drawCardsFromDeck(initialCards)
+        
+        -- Reset the day over flag
+        game.isDayOver = false
+        
         return
     end
     
@@ -771,8 +809,11 @@ function endShift()
     discardHand()
     
     -- Draw new cards to fill the hand based on the number of alive tiles
-    local cardsToAdd = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
+    local cardsToAdd = game.calculateDrawAmount(game.shiftStartAliveTilesCount) - game.holdCount
     drawCardsFromDeck(cardsToAdd)
+    
+    -- Unhold cards AFTER drawing new ones, so cards held from previous shift remain held
+    unholdAllCards()
     
     -- Reset play count for the new round
     game.playCount = 0
@@ -1059,16 +1100,26 @@ function discardHand()
     -- Reset play count for the new round
     game.playCount = 0
     
-    -- If deck is empty but discard has cards, shuffle discard into deck
+    -- If deck is empty but discard has cards, end the day instead of reshuffling
     if game.deck.count == 0 and game.discard.count > 0 then
-        game.deck.cards = game.discard.cards
-        game.deck.count = game.discard.count
-        game.discard.cards = {}
-        game.discard.count = 0
-        shuffleDeck()
+        game.endDay()
     end
     
     -- Update hand positions after removing cards
+    updateHandPositions()
+end
+
+-- Function to reset all cards' held status
+function unholdAllCards()
+    -- Reset the hold count
+    game.holdCount = 0
+    
+    -- Set all cards to unheld
+    for _, card in ipairs(game.cards) do
+        card.held = false
+    end
+    
+    -- Update hand positions
     updateHandPositions()
 end
 
@@ -1081,16 +1132,10 @@ function drawCardsFromDeck(numCards)
     -- Limit by how many cards are actually available
     numCards = math.min(numCards, game.deck.count)
     
-    -- If deck is empty but discard has cards, shuffle discard into deck
+    -- If deck is empty but discard has cards, end the day instead of reshuffling
     if numCards > 0 and game.deck.count == 0 and game.discard.count > 0 then
-        game.deck.cards = game.discard.cards
-        game.deck.count = game.discard.count
-        game.discard.cards = {}
-        game.discard.count = 0
-        shuffleDeck()
-        
-        -- Recalculate how many cards we can draw
-        numCards = math.min(numCards, game.deck.count)
+        game.endDay()
+        return 0
     end
     
     -- Draw cards from the deck to the hand
@@ -1113,6 +1158,8 @@ function drawCardsFromDeck(numCards)
     
     -- Update hand positions
     updateHandPositions()
+    
+    return numCards
 end
 
 -- Check if point is within rectangle
@@ -1145,6 +1192,14 @@ function advanceDayClock()
                 return false
             end
             
+            -- Empty the discard pile first
+            game.discard.cards = {}
+            game.discard.count = 0
+            
+            -- Regenerate the deck to start the new day with a fresh deck
+            generateDeck()
+            
+            -- Advance to the next day
             game.dayClock.day = game.dayClock.day + 1
             game.dayClock.remainingSegments = game.dayClock.totalSegments
             
@@ -1476,4 +1531,10 @@ function setDangerTiles()
     for _, tile in ipairs(game.holdTiles) do
         table.insert(game.dangerTiles, {x = tile.x, y = tile.y})
     end
+end
+
+-- Function to end a day due to running out of cards
+function game.endDay()
+    game.isDayOver = true
+    print("DAY OVER: Run out of cards")
 end

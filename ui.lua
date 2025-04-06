@@ -257,6 +257,11 @@ function ui.draw()
     if game.isGameOver then
         ui.drawGameOverOverlay()
     end
+
+    -- Draw day over overlay if the game is over
+    if game.isDayOver then
+        ui.drawDayOverOverlay()
+    end
 end
 
 -- Function to draw the status bar
@@ -371,30 +376,36 @@ function ui.drawFieldCards()
         local y, x = string.match(pos, "(%d+),(%d+)")
         x, y = tonumber(x), tonumber(y)
         
-        -- Get the top-left corner of the card
-        local screenX, screenY = ui.gridToScreen(x, y)
-        
-        -- Only draw if the card is in view
-        if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
-           screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
-            -- Draw the card
-            love.graphics.setColor(1, 1, 1)
+        -- Check if x and y are valid before attempting to draw
+        if x ~= nil and y ~= nil then
+            -- Get the top-left corner of the card
+            local screenX, screenY = ui.gridToScreen(x, y)
             
-            -- Handle rotation for flipped cards (180 degrees = pi radians)
-            local rotation = cardData.rotation
-            if cardData.flipped then
-                rotation = rotation + math.pi
+            -- Only draw if the card is in view
+            if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
+               screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+                -- Draw the card
+                love.graphics.setColor(1, 1, 1)
+                
+                -- Handle rotation for flipped cards (180 degrees = pi radians)
+                local rotation = cardData.rotation
+                if cardData.flipped then
+                    rotation = rotation + math.pi
+                end
+                
+                love.graphics.draw(
+                    assets.cards[cardData.type], 
+                    screenX + CARD_WIDTH/2, 
+                    screenY + CARD_HEIGHT/2, 
+                    rotation,  -- rotation in radians
+                    1, 1,      -- scale x, scale y
+                    CARD_WIDTH/2,  -- origin x (center of card)
+                    CARD_HEIGHT/2  -- origin y (center of card)
+                )
             end
-            
-            love.graphics.draw(
-                assets.cards[cardData.type], 
-                screenX + CARD_WIDTH/2, 
-                screenY + CARD_HEIGHT/2, 
-                rotation,  -- rotation in radians
-                1, 1,      -- scale x, scale y
-                CARD_WIDTH/2,  -- origin x (center of card)
-                CARD_HEIGHT/2  -- origin y (center of card)
-            )
+        else
+            -- Log or handle invalid position format
+            print("Warning: Invalid card position format in game.field: " .. pos)
         end
     end
     
@@ -403,34 +414,40 @@ function ui.drawFieldCards()
         local y, x = string.match(pos, "(%d+),(%d+)")
         x, y = tonumber(x), tonumber(y)
         
-        -- Get the top-left corner of the card
-        local screenX, screenY = ui.gridToScreen(x, y)
-        
-        -- Only draw if the card is in view
-        if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
-           screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
-            -- Draw the card
-            love.graphics.setColor(1, 1, 1)
+        -- Check if x and y are valid before attempting to draw
+        if x ~= nil and y ~= nil then
+            -- Get the top-left corner of the card
+            local screenX, screenY = ui.gridToScreen(x, y)
             
-            -- Handle rotation for flipped cards (180 degrees = pi radians)
-            local rotation = cardData.rotation
-            if cardData.flipped then
-                rotation = rotation + math.pi
+            -- Only draw if the card is in view
+            if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
+               screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+                -- Draw the card
+                love.graphics.setColor(1, 1, 1)
+                
+                -- Handle rotation for flipped cards (180 degrees = pi radians)
+                local rotation = cardData.rotation
+                if cardData.flipped then
+                    rotation = rotation + math.pi
+                end
+                
+                love.graphics.draw(
+                    assets.cards[cardData.type], 
+                    screenX + CARD_WIDTH/2, 
+                    screenY + CARD_HEIGHT/2, 
+                    rotation,  -- rotation in radians
+                    1, 1,      -- scale x, scale y
+                    CARD_WIDTH/2,  -- origin x (center of card)
+                    CARD_HEIGHT/2  -- origin y (center of card)
+                )
+                
+                -- Draw gray overlay to indicate planned status
+                love.graphics.setColor(unpack(COLORS.planned_overlay))
+                love.graphics.rectangle("fill", screenX, screenY, CARD_WIDTH, CARD_HEIGHT)
             end
-            
-            love.graphics.draw(
-                assets.cards[cardData.type], 
-                screenX + CARD_WIDTH/2, 
-                screenY + CARD_HEIGHT/2, 
-                rotation,  -- rotation in radians
-                1, 1,      -- scale x, scale y
-                CARD_WIDTH/2,  -- origin x (center of card)
-                CARD_HEIGHT/2  -- origin y (center of card)
-            )
-            
-            -- Draw gray overlay to indicate planned status
-            love.graphics.setColor(unpack(COLORS.planned_overlay))
-            love.graphics.rectangle("fill", screenX, screenY, CARD_WIDTH, CARD_HEIGHT)
+        else
+            -- Log or handle invalid position format
+            print("Warning: Invalid card position format in game.plannedCards: " .. pos)
         end
     end
 end
@@ -501,6 +518,12 @@ end
 
 -- Convert grid coordinates to screen position
 function ui.gridToScreen(gridX, gridY)
+    -- Safety check to prevent nil errors
+    if gridX == nil or gridY == nil then
+        print("Warning: gridToScreen called with nil parameters")
+        return 0, 0 -- Return a default value
+    end
+    
     return GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX, 
            GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY
 end
@@ -765,6 +788,39 @@ function ui.drawGameOverOverlay()
     
     -- Draw restart text below info text
     love.graphics.print(restartText, SCREEN_WIDTH/2 - restartW/2, SCREEN_HEIGHT/2 + textH*3)
+end
+
+-- Function to draw day over overlay
+function ui.drawDayOverOverlay()
+    -- Semi-transparent black overlay
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+    
+    -- Day over text
+    love.graphics.setColor(0.2, 0.6, 1) -- Blue color for day over
+    love.graphics.setFont(assets.font)
+    local text = "DAY OVER"
+    local textW = assets.font:getWidth(text)
+    local textH = assets.font:getHeight()
+    
+    -- Draw text centered on screen
+    love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
+    
+    -- Instruction text
+    love.graphics.setColor(1, 1, 1)
+    local infoText = "You've run out of cards for the day"
+    local infoW = assets.font:getWidth(infoText)
+    
+    -- Draw info text below day over text
+    love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
+    
+    -- Continue instructions
+    love.graphics.setColor(0.8, 0.8, 1)
+    local continueText = "Click anywhere to continue to the next day"
+    local continueW = assets.font:getWidth(continueText)
+    
+    -- Draw continue text below info text
+    love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT/2 + textH*3)
 end
 
 -- Return the UI module
