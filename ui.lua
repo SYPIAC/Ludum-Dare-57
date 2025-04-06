@@ -291,7 +291,10 @@ function ui.drawStatusBar()
     -- Draw SCORE
     love.graphics.setColor(unpack(COLORS.text))
     love.graphics.printf("SCORE", SCREEN_WIDTH - STATUS_BAR_WIDTH, 150, STATUS_BAR_WIDTH, "center")
-    love.graphics.printf("000000", SCREEN_WIDTH - STATUS_BAR_WIDTH, 170, STATUS_BAR_WIDTH, "center")
+    
+    -- Format the score with leading zeros to 6 digits
+    local scoreText = string.format("%06d", game.score)
+    love.graphics.printf(scoreText, SCREEN_WIDTH - STATUS_BAR_WIDTH, 170, STATUS_BAR_WIDTH, "center")
     
     -- Get current depth and depth goal
     local currentDepth = calculateCurrentDepth()
@@ -320,6 +323,25 @@ function ui.drawStatusBar()
     
     -- Draw the depth values
     love.graphics.printf(currentDepth .. "/" .. depthGoal, SCREEN_WIDTH - STATUS_BAR_WIDTH, 220, STATUS_BAR_WIDTH, "center")
+    
+    -- Draw DANGERS indicator
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("DANGERS", SCREEN_WIDTH - STATUS_BAR_WIDTH, 250, STATUS_BAR_WIDTH, "center")
+    
+    -- Count the number of danger tiles
+    local dangerCount = #game.dangerTiles
+    
+    -- Color the danger count based on how many there are
+    if dangerCount == 0 then
+        -- No dangers - show in green
+        love.graphics.setColor(unpack(COLORS.positive))
+    else
+        -- Dangers present - show in red
+        love.graphics.setColor(unpack(COLORS.negative))
+    end
+    
+    -- Draw the danger count
+    love.graphics.printf(tostring(dangerCount), SCREEN_WIDTH - STATUS_BAR_WIDTH, 270, STATUS_BAR_WIDTH, "center")
 end
 
 function ui.drawFieldGrid()    
@@ -659,6 +681,9 @@ function ui.drawCardDistributionPopup(cardList, anchorX, anchorY)
     
     -- Add 4-edge, 4-path card
     table.insert(orderedCardTypes, "path_4_4")
+    
+    -- Add empty card
+    table.insert(orderedCardTypes, "empty")
     
     -- Calculate number of rows needed
     local cardTypeCount = #orderedCardTypes

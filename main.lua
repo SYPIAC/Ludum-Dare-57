@@ -87,7 +87,10 @@ local CARD_TYPES = {
     PATH_3_3B = "path_3_3b", -- Three paths left top right
     
     -- 4 Edges, 4 Paths
-    PATH_4_4 = "path_4_4"    -- Four paths
+    PATH_4_4 = "path_4_4",   -- Four paths
+    
+    -- Empty card (no paths)
+    EMPTY = "empty"           -- Card with no paths
 }
 
 -- Card path data structure 
@@ -173,6 +176,11 @@ local CARD_PATH_DATA = {
         edges = {[DIRECTION.TOP] = true, [DIRECTION.RIGHT] = true, [DIRECTION.BOTTOM] = true, [DIRECTION.LEFT] = true},
         paths = {{DIRECTION.TOP}, {DIRECTION.RIGHT}, {DIRECTION.BOTTOM}, {DIRECTION.LEFT}}, -- Four separate dead ends
         flippable = false -- Looks the same when flipped
+    },
+    [CARD_TYPES.EMPTY] = {
+        edges = {[DIRECTION.TOP] = false, [DIRECTION.RIGHT] = false, [DIRECTION.BOTTOM] = false, [DIRECTION.LEFT] = false},
+        paths = {}, -- No paths
+        flippable = false -- Empty card looks the same when flipped
     }
 }
 
@@ -193,7 +201,8 @@ local CARD_IMAGES = {
     [CARD_TYPES.PATH_2_2D] = "path_2_2d.png",
     [CARD_TYPES.PATH_3_3A] = "path_3_3a.png",
     [CARD_TYPES.PATH_3_3B] = "path_3_3b.png",
-    [CARD_TYPES.PATH_4_4] = "path_4_4.png"
+    [CARD_TYPES.PATH_4_4] = "path_4_4.png",
+    [CARD_TYPES.EMPTY] = "empty.png"
 }
 
 -- Import UI module
@@ -227,6 +236,7 @@ local game = {
     playCount = 0,   -- Number of cards played in the current round
     maxHoldCards = MAX_HOLD_CARDS,  -- Maximum number of cards that can be held
     maxPlayCards = MAX_PLAY_CARDS,   -- Maximum number of cards that can be played
+    score = 0,       -- Player's score (100 points per tile placed)
     dayClock = {     -- Day clock state
         totalSegments = 6,      -- Total number of segments in the day (4, 5, or 6)
         remainingSegments = 6,  -- Number of segments remaining in the day
@@ -799,11 +809,18 @@ function endShift()
     -- Play a random shift end sound
     playShiftEndSound()
     
+    -- Count the number of planned cards for scoring
+    local cardsBuilt = 0
+    
     -- First, build all planned cards (move them to the field)
     for pos, cardData in pairs(game.plannedCards) do
         -- Add to permanent field
         game.field[pos] = cardData
+        cardsBuilt = cardsBuilt + 1
     end
+    
+    -- Award 100 points per card built
+    game.score = game.score + (cardsBuilt * 100)
     
     -- Clear the planned cards
     game.plannedCards = {}
@@ -846,9 +863,14 @@ function endShift()
     
     -- Draw the cards
     drawCardsFromDeck(drawAmount)
+
     
     -- Update the hand positions
     updateHandPositions()
+    
+    -- No more cards held
+    unholdAllCards();
+    
 end
 
 -- Generate the initial mineshaft structure
@@ -1138,6 +1160,15 @@ function generateDeck()
     table.insert(game.deck.cards, CARD_TYPES.PATH_3_3B)
     
     table.insert(game.deck.cards, CARD_TYPES.PATH_4_4)
+    
+    -- Add empty cards on day 4 and beyond
+    if game.dayClock and game.dayClock.day >= 4 then
+        -- Add 5 empty cards to the deck to increase difficulty
+        for i = 1, 5 do 
+            table.insert(game.deck.cards, CARD_TYPES.EMPTY) 
+        end
+        print("Added 5 empty cards to the deck on day " .. game.dayClock.day)
+    end
     
     -- Update the count
     game.deck.count = #game.deck.cards
@@ -1727,7 +1758,7 @@ function handleDayOverClick()
         -- Increment day
         game.dayClock.day = game.dayClock.day + 1
         game.dayClock.segmentsUsed = 0
-        
+
         -- Start the new day
         startNewDay()
     end

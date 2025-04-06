@@ -77,7 +77,7 @@ story.messages = {
     },
     [5] = {
         title = "DAY 5",
-        mindepth = 120,
+        mindepth = 160,
         depthgoal = 220,
         shifts = 5,
         content = {
@@ -91,7 +91,7 @@ story.messages = {
     },
     [6] = {
         title = "YOU WIN",
-        mindepth = 120,
+        mindepth = 160,
         depthgoal = 220,
         shifts = 4,
         content = {
@@ -295,6 +295,16 @@ function story.drawStoryOverlay()
                         end
                         contentY = contentY + lineSpacing
                     end
+                end
+                
+                -- Check if this is the victory screen (day 6)
+                if title == "YOU WIN" or (game.dayClock and game.dayClock.day == 6) then
+                    -- Draw the final score with emphasis
+                    contentY = contentY + lineSpacing
+                    love.graphics.setColor(unpack(COLORS.emphasis))
+                    local scoreText = "FINAL SCORE: " .. string.format("%06d", game.score)
+                    local scoreWidth = assets.font:getWidth(scoreText)
+                    love.graphics.print(scoreText, screenWidth/2 - scoreWidth/2, contentY)
                 end
             else
                 -- Fallback for string content
