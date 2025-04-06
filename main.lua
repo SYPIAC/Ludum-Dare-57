@@ -198,6 +198,7 @@ local CARD_IMAGES = {
 
 -- Import UI module
 local ui = require("ui")
+local story = require("story") -- Add the story module import
 
 -- Game state
 local game = {
@@ -233,6 +234,7 @@ local game = {
     },
     isGameOver = false,  -- Flag to track if the game is over
     isDayOver = false,   -- Flag to track if a day has ended due to running out of cards
+    isInitialStory = true,  -- Flag to track if we're showing the initial story for a day
     
     -- Function to calculate how many cards to draw based on alive tiles
     calculateDrawAmount = function(aliveTilesCount)
@@ -243,6 +245,7 @@ local game = {
 -- Function called when the game is over
 function game.over(reason)
     game.isGameOver = true
+    game.isInitialStory = false  -- Set to false because game is over
     print("GAME OVER: " .. (reason or "Unknown reason"))
 end
 
@@ -358,6 +361,8 @@ function love.load()
     
     -- Load sound effects
     assets.sounds.dayStart = love.audio.newSource("sounds/foreman.wav", "static")
+    -- Set initial volume to very high (values > 1.0 are allowed and make it louder)
+    assets.sounds.dayStart:setVolume(2.0)
     
     -- Set up the canPlaceCard function reference
     game.canPlaceCard = canPlaceCard
@@ -380,7 +385,7 @@ function love.load()
     -- Initialize tracking values for alive tiles and hold capacity
     game.shiftStartAliveTilesCount = #game.aliveTiles
     game.currentHoldCapacity = calculateCurrentHoldCapacity()
-    game.maxPlayCards = game.shiftStartAliveTilesCount -- Maximum cards playable this shift
+    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount,7) -- Maximum cards playable this shift
     game.maxHoldCards = game.currentHoldCapacity  -- Hold limit is based only on connections to alive tiles
     
     -- Don't initialize danger tiles at the start - let them be set at the end of the first day
@@ -389,11 +394,8 @@ function love.load()
     local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
     
-    -- Play the day start sound for the first day
-    playDayStartSound()
-    
     -- Show the story screen at the start of the game
-    showStoryScreen("Welcome to Deep Dig! You're the new foreman at the mine. Your job is to expand the mine network using path cards. Connect paths strategically to maximize efficiency. Click anywhere to begin your first day.")
+    story.showDayStory(1)
 end
 
 function updateHandPositions()
@@ -479,45 +481,16 @@ function love.update(dt)
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
-    -- Don't register mouse presses if the game is over
-    if game.isGameOver then
+    -- Check if day is over or game is over - handle clicks to continue
+    if game.isDayOver then
+        if button == 1 then  -- Left mouse button
+            handleDayOverClick()
+        end
         return
     end
     
-    -- If the day is over and the player clicks anywhere, advance to the next day
-    if game.isDayOver then
-        -- Advance to the next day
-        game.dayClock.day = game.dayClock.day + 1
-        game.dayClock.remainingSegments = game.dayClock.totalSegments
-        
-        -- Clear any remaining cards from discard and hand
-        game.discard.cards = {}
-        game.discard.count = 0
-        game.cards = {} -- Clear hand
-        game.holdCount = 0
-        
-        -- Regenerate the deck for the new day
-        generateDeck()
-        
-        -- Set new danger tiles for the next day
-        setDangerTiles()
-        
-        -- Recalculate alive tiles
-        updateAliveTiles()
-        
-        -- Update maximum cards playable and holdable
-        game.shiftStartAliveTilesCount = #game.aliveTiles
-        game.currentHoldCapacity = calculateCurrentHoldCapacity()
-        game.maxPlayCards = game.shiftStartAliveTilesCount
-        game.maxHoldCards = game.currentHoldCapacity
-        
-        -- Draw cards for the new day
-        local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
-        drawCardsFromDeck(initialCards)
-        
-        -- Reset the day over flag
-        game.isDayOver = false
-        
+    if game.isGameOver then
+        -- Currently, the only way to restart is to refresh the page
         return
     end
     
@@ -789,10 +762,7 @@ function love.keypressed(key)
         -- Debug key to test advancing the day clock
         advanceDayClock()
     elseif key == "e" then
-        -- End the current shift when 'e' is pressed
-        if not game.isGameOver and not game.isDayOver then
-            endShift()
-        end
+        endShift()
     end
 end
 
@@ -820,7 +790,7 @@ function endShift()
     
     -- Update maximum cards playable and holdable
     game.shiftStartAliveTilesCount = #game.aliveTiles
-    game.maxPlayCards = game.shiftStartAliveTilesCount
+    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount,7)
     game.maxHoldCards = game.currentHoldCapacity
     
     -- Advance the day clock
@@ -1580,22 +1550,108 @@ end
 -- Function to end a day due to running out of cards
 function game.endDay(reason)
     game.isDayOver = true
+    game.isInitialStory = false  -- Set to false because this is the end of a day
     print("DAY OVER: " .. (reason or "Run out of cards"))
     game.dayOverReason = reason or "Run out of cards"
 end
 
--- Function to show a story screen by simulating a day over screen
-function showStoryScreen(storyText)
-    game.isDayOver = true
-    game.dayOverReason = storyText or "Story Introduction"
-    -- Set day to 0 for story mode
-    game.dayClock.day = 0
+-- Function to start a new day
+function startNewDay()
+    print("Starting day " .. game.dayClock.day)
+    
+    -- Update the day clock for the new day
+    if game.dayClock.day > 1 then -- Skip for first day which is set in love.load
+        -- Handle setting day clock segments based on the day
+        if game.dayClock.day == 5 then
+            -- Day 5 has only 5 segments (as mentioned in the story)
+            setDayClockSegments(5)
+        else
+            -- Default is 6 segments for other days
+            setDayClockSegments(6)
+        end
+    end
+    
+    -- Set isInitialStory flag to true when starting a new day
+    game.isInitialStory = true
+    
+    -- Show story for this day
+    story.showDayStory(game.dayClock.day)
 end
 
 -- Function to play the day start sound
-function playDayStartSound()
+function _G.playDayStartSound()
     -- Stop the sound if it's already playing
     assets.sounds.dayStart:stop()
+    -- Set volume to very high (values > 1.0 are allowed and make it louder)
+    assets.sounds.dayStart:setVolume(2.0)
     -- Play the sound from the beginning
     assets.sounds.dayStart:play()
+end
+
+-- Function to handle a click on the day over screen
+function handleDayOverClick()
+    -- Check if this is day 0 (story screen)
+    if game.dayClock.day == 0 then
+        -- Start the first day
+        game.isDayOver = false
+        game.dayClock.day = 1
+        game.dayClock.segmentsUsed = 0
+        
+        -- Show the day 1 story
+        startNewDay()
+    else
+        -- If this is the initial story for the day, just start playing
+        if game.isInitialStory then
+            game.isDayOver = false
+            game.isInitialStory = false
+            return
+        end
+        
+        -- Otherwise, it's the end of the day - prepare for the next
+        game.isDayOver = false
+        
+        
+        -- Check if game over (any danger tiles remaining)
+        if #game.dangerTiles > 0 then
+            game.isGameOver = true
+            return
+        end
+
+        -- Process dangerous spaces
+        processEndOfDay()
+        
+        -- Increment day
+        game.dayClock.day = game.dayClock.day + 1
+        game.dayClock.segmentsUsed = 0
+        
+        -- Start the new day
+        startNewDay()
+    end
+end
+
+-- Function to process the end of day logic
+function processEndOfDay()
+    -- Clear any remaining cards from discard and hand
+    game.discard.cards = {}
+    game.discard.count = 0
+    game.cards = {} -- Clear hand
+    game.holdCount = 0
+    
+    -- Regenerate the deck for the new day
+    generateDeck()
+    setDangerTiles()
+
+    
+    -- Recalculate alive tiles
+    updateAliveTiles()
+    
+    -- Update maximum cards playable and holdable
+    game.shiftStartAliveTilesCount = #game.aliveTiles
+    game.currentHoldCapacity = calculateCurrentHoldCapacity()
+    game.maxPlayCards = math.min(game.shiftStartAliveTilesCount,7)
+    game.maxHoldCards = game.currentHoldCapacity
+    
+    -- Draw cards for the new day
+    local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
+    drawCardsFromDeck(initialCards)
 end

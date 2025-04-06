@@ -27,6 +27,7 @@ local DEEP_MINE_LEVEL = 10
 -- Colors
 local COLORS = {
     background = {0, 0, 0},        -- Black
+    grid_line = {0.3, 0.3, 0.4, 0.7},
     grid_symbol = {0.6, 0.6, 0.6}, -- Light gray for +
     hand_bg = {0.5, 0.3, 0.2},     -- Brown for hand area
     status_bar = {0, 0, 0},        -- Black for status bar
@@ -39,7 +40,9 @@ local COLORS = {
     clock_face = {1, 1, 0},        -- Yellow for clock face
     clock_segment_used = {0, 0, 0}, -- Black for used clock segments
     clock_dividers = {0.5, 0.5, 0.5}, -- Gray for clock segment dividers
-    planned_overlay = {0.5, 0.5, 0.5, 0.5} -- Semi-transparent gray for planned cards
+    planned_overlay = {0.5, 0.5, 0.5, 0.5}, -- Semi-transparent gray for planned cards
+    positive = {0, 1, 0}, -- Green for positive numbers
+    negative = {1, 0, 0}  -- Red for negative numbers
 }
 
 -- Shared reference to game state and assets (will be set from main.lua)
@@ -47,6 +50,8 @@ local game = nil
 local assets = nil
 local viewport = nil
 local DIRECTION = nil
+local predictAliveAndHoldCapacity = nil
+local story = require("story")  -- Add the story module requirement
 
 -- Hover states for deck/discard UI
 local deckHover = false
@@ -67,6 +72,9 @@ function ui.init(gameState, gameAssets, viewportState, directionEnum)
     
     -- Set up references to any prediction functions
     predictAliveAndHoldCapacity = _G.predictAliveAndHoldCapacity
+    
+    -- Initialize the story module
+    story.init(game, assets)
 end
 
 -- Main drawing function
@@ -146,10 +154,10 @@ function ui.draw()
     love.graphics.printf(tostring(futureDrawAmount), infoX + 0, numberY, 30, "right")
 
     if drawDifference > 0 then
-        love.graphics.setColor(0, 1, 0) -- Green for increase
+        love.graphics.setColor(unpack(COLORS.positive))
         love.graphics.printf("(+" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
     elseif drawDifference < 0 then
-        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        love.graphics.setColor(unpack(COLORS.negative))
         love.graphics.printf("(" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
     end
 
@@ -203,16 +211,17 @@ function ui.draw()
 
     -- Calculate predicted values for display
     local predictedAliveTiles, predictedHoldCapacity, _ = predictAliveAndHoldCapacity()
-    local aliveTilesDiff = predictedAliveTiles - game.shiftStartAliveTilesCount
+    predictedAliveTiles = math.min(predictedAliveTiles, 7)
+    local aliveTilesDiff = predictedAliveTiles - math.min(game.shiftStartAliveTilesCount, 7)
     local holdCapacityDiff = predictedHoldCapacity - game.currentHoldCapacity
 
     -- Format change indicators with colors
     local playChangeText = ""
     if aliveTilesDiff > 0 then
-        love.graphics.setColor(0, 1, 0) -- Green for increase
+        love.graphics.setColor(unpack(COLORS.positive))
         playChangeText = "(+" .. aliveTilesDiff .. ")"
     elseif aliveTilesDiff < 0 then
-        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        love.graphics.setColor(unpack(COLORS.negative))
         playChangeText = "(" .. aliveTilesDiff .. ")"
     end
 
@@ -229,10 +238,10 @@ function ui.draw()
     local holdChangeText = ""
     love.graphics.setColor(unpack(COLORS.text)) -- Reset color
     if holdCapacityDiff > 0 then
-        love.graphics.setColor(0, 1, 0) -- Green for increase
+        love.graphics.setColor(unpack(COLORS.positive))
         holdChangeText = "(+" .. holdCapacityDiff .. ")"
     elseif holdCapacityDiff < 0 then
-        love.graphics.setColor(1, 0, 0) -- Red for decrease
+        love.graphics.setColor(unpack(COLORS.negative))
         holdChangeText = "(" .. holdCapacityDiff .. ")"
     end
 
@@ -255,12 +264,12 @@ function ui.draw()
     
     -- Draw game over overlay if the game is over
     if game.isGameOver then
-        ui.drawGameOverOverlay()
+        story.drawGameOverOverlay()
     end
 
     -- Draw day over overlay if the game is over
     if game.isDayOver then
-        ui.drawDayOverOverlay()
+        story.drawStoryOverlay()
     end
 end
 
@@ -331,8 +340,7 @@ function ui.drawFieldGrid()
                     
                     -- Only highlight cells within visible area
                     if gx == col and gy == row and x + CARD_WIDTH <= FIELD_WIDTH then
-                        love.graphics.setColor(unpack(COLORS.highlight))
-                        love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                        love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
                     end
                 end
             end
@@ -755,109 +763,6 @@ function ui.drawPieSegment(centerX, centerY, radius, startAngle, endAngle)
     
     -- Draw the filled polygon
     love.graphics.polygon("fill", vertices)
-end
-
--- Function to draw game over overlay
-function ui.drawGameOverOverlay()
-    -- Semi-transparent black overlay
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-    
-    -- Game over text
-    love.graphics.setColor(1, 0, 0)
-    love.graphics.setFont(assets.font)
-    local text = "GAME OVER"
-    local textW = assets.font:getWidth(text)
-    local textH = assets.font:getHeight()
-    
-    -- Draw text centered on screen
-    love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
-    
-    -- Instruction text
-    love.graphics.setColor(1, 1, 1)
-    local infoText = "Danger tiles remained at the end of the day"
-    local infoW = assets.font:getWidth(infoText)
-    
-    -- Draw info text below game over text
-    love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
-    
-    -- Restart instructions
-    love.graphics.setColor(0.8, 0.8, 1)
-    local restartText = "Refresh the page to restart"
-    local restartW = assets.font:getWidth(restartText)
-    
-    -- Draw restart text below info text
-    love.graphics.print(restartText, SCREEN_WIDTH/2 - restartW/2, SCREEN_HEIGHT/2 + textH*3)
-end
-
--- Function to draw day over overlay
-function ui.drawDayOverOverlay()
-    -- Semi-transparent black overlay
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
-    
-    -- Check if this is day 0 (story mode)
-    if game.dayClock and game.dayClock.day == 0 then
-        -- Story title
-        love.graphics.setColor(0.8, 0.8, 1) -- Light blue for story
-        love.graphics.setFont(assets.font)
-        local text = "STORY"
-        local textW = assets.font:getWidth(text)
-        local textH = assets.font:getHeight()
-        
-        -- Draw title centered on screen
-        love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/3 - textH/2)
-        
-        -- Story text - use the dayOverReason as the story content
-        love.graphics.setColor(1, 1, 1)
-        
-        -- Draw story text with word wrapping
-        love.graphics.printf(game.dayOverReason, SCREEN_WIDTH/6, SCREEN_HEIGHT/2 - textH/2, 
-                           2*SCREEN_WIDTH/3, "center")
-        
-        -- Continue instructions
-        love.graphics.setColor(0.8, 0.8, 1)
-        local continueText = "Click anywhere to begin"
-        local continueW = assets.font:getWidth(continueText)
-        
-        -- Draw continue text at bottom
-        love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT*2/3 + textH)
-    else
-        -- Regular day over screen
-        -- Day over text
-        love.graphics.setColor(0.2, 0.6, 1) -- Blue color for day over
-        love.graphics.setFont(assets.font)
-        local text = "DAY OVER"
-        local textW = assets.font:getWidth(text)
-        local textH = assets.font:getHeight()
-        
-        -- Draw text centered on screen
-        love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
-        
-        -- Instruction text - use the reason from the game state
-        love.graphics.setColor(1, 1, 1)
-        local infoText = ""
-        
-        -- Check what the reason for the day ending was
-        if game.dayOverReason == "Used all shifts for the day" then
-            infoText = "You've used all available shifts for today"
-        else
-            infoText = "You've run out of cards for the day"
-        end
-        
-        local infoW = assets.font:getWidth(infoText)
-        
-        -- Draw info text below day over text
-        love.graphics.print(infoText, SCREEN_WIDTH/2 - infoW/2, SCREEN_HEIGHT/2 + textH)
-        
-        -- Continue instructions
-        love.graphics.setColor(0.8, 0.8, 1)
-        local continueText = "Click anywhere to continue to the next day"
-        local continueW = assets.font:getWidth(continueText)
-        
-        -- Draw continue text below info text
-        love.graphics.print(continueText, SCREEN_WIDTH/2 - continueW/2, SCREEN_HEIGHT/2 + textH*3)
-    end
 end
 
 -- Return the UI module
