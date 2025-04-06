@@ -205,6 +205,7 @@ local game = {
     cards = {},      -- Cards in hand
     dragging = nil,  -- Card being dragged
     field = {},      -- Placed cards on field
+    plannedCards = {},  -- Cards planned for placement but not yet built
     deck = {         -- Deck of cards
         cards = {},  -- Actual card types in the deck
         count = 0,   -- Number of cards in deck
@@ -251,7 +252,7 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
         return false
     end
     
-    -- Second check: do the edges match with adjacent cards?
+    -- Second check: do the edges match with adjacent cards (both permanent and planned)?
     local cardData = flipped and getFlippedCardData(cardType, true) or CARD_PATH_DATA[cardType]
     
     -- Check each adjacent cell for compatibility
@@ -264,7 +265,8 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
     
     -- For each adjacent cell, check if its matching edge is compatible
     for position, adjacent in pairs(adjacentCells) do
-        local adjacentCardData = game.field[adjacent.y .. "," .. adjacent.x]
+        local adjacentPos = adjacent.y .. "," .. adjacent.x
+        local adjacentCardData = game.field[adjacentPos] or game.plannedCards[adjacentPos]
         
         -- If there's a card adjacent, check edge compatibility
         if adjacentCardData then
@@ -450,24 +452,35 @@ function love.mousepressed(x, y, button)
         local drawButtonHeight = 30
         
         if pointInRect(x, y, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight) then
-            -- Discard current hand and draw new cards
-            discardHand()
-            drawCardsFromDeck()
-            
-            -- Advance the day clock
-            local dayChanged = advanceDayClock()
-            if dayChanged then
-                -- Handle day change if needed (e.g., special events at day start)
-                -- This is just a placeholder for future functionality
-                print("A new day has dawned! Day " .. game.dayClock.day)
-            end
-            
+            -- End Shift: Build all planned cards and advance the day clock
+            endShift()
             return
         end
         
         -- If we're in the field area (not hand)
         if y < FIELD_HEIGHT then
             local gridX, gridY = screenToGrid(x, y)
+            local position = gridY .. "," .. gridX
+            
+            -- Check if we clicked on a planned card
+            if game.plannedCards[position] then
+                -- Start dragging a planned card back to hand
+                local cardType = game.plannedCards[position].type
+                local flipped = game.plannedCards[position].flipped
+                
+                -- Create a temporary drag object for this card
+                game.dragging = {
+                    type = cardType,
+                    flipped = flipped,
+                    x = x - CARD_WIDTH / 2,
+                    y = y - CARD_HEIGHT / 2,
+                    isPlanned = true,
+                    plannedPosition = position
+                }
+                
+                -- Don't remove from plannedCards yet, we'll do that if it's successfully returned to hand
+                return
+            end
             
             -- Check if we clicked on a card in hand
             local cardClicked = false
@@ -523,6 +536,77 @@ function love.mousereleased(x, y, button)
         
         -- Handle card placement if dragging a card
         if game.dragging then
+            -- Special handling for planned cards being returned to hand
+            if game.dragging.isPlanned then
+                -- If released in the hand area or in an invalid field position, return to hand
+                local returnToHand = y >= FIELD_HEIGHT  -- If in hand area
+                
+                if not returnToHand and y < FIELD_HEIGHT then
+                    -- Check if this is a valid field position
+                    local gridX, gridY = screenToGrid(x, y)
+                    local screenX, screenY = gridToScreen(gridX, gridY)
+                    
+                    -- Check if out of bounds or over UI
+                    if screenX + CARD_WIDTH > FIELD_WIDTH or screenX < 0 or 
+                       screenY < 40 or screenY > FIELD_HEIGHT then
+                        returnToHand = true
+                    else
+                        -- Check if card can be placed here (if it's a different location)
+                        local newPosition = gridY .. "," .. gridX
+                        if newPosition ~= game.dragging.plannedPosition and
+                           not canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
+                            returnToHand = true
+                        else
+                            -- If it's a different but valid location, update the planned card position
+                            if newPosition ~= game.dragging.plannedPosition then
+                                -- Store the card data
+                                local cardData = game.plannedCards[game.dragging.plannedPosition]
+                                -- Remove from old position
+                                game.plannedCards[game.dragging.plannedPosition] = nil
+                                -- Add to new position
+                                game.plannedCards[newPosition] = cardData
+                                
+                                -- Add the tile back to alive tiles
+                                local oldY, oldX = string.match(game.dragging.plannedPosition, "(%d+),(%d+)")
+                                addToAliveTiles(tonumber(oldX), tonumber(oldY))
+                                
+                                -- Remove the new position from alive tiles
+                                removeFromAliveTiles(gridX, gridY)
+                            end
+                        end
+                    end
+                end
+                
+                if returnToHand then
+                    -- Add the card back to hand
+                    table.insert(game.cards, {
+                        id = love.math.random(1000),
+                        x = 0,
+                        y = 0,
+                        type = game.dragging.type,
+                        flipped = game.dragging.flipped,
+                        held = false
+                    })
+                    
+                    -- Remove from planned cards
+                    game.plannedCards[game.dragging.plannedPosition] = nil
+                    
+                    -- Decrement play count
+                    game.playCount = game.playCount - 1
+                    
+                    -- Add the tile back to alive tiles
+                    local gridY, gridX = string.match(game.dragging.plannedPosition, "(%d+),(%d+)")
+                    addToAliveTiles(tonumber(gridX), tonumber(gridY))
+                    
+                    -- Update hand positions
+                    updateHandPositions()
+                end
+                
+                -- Reset dragging
+                game.dragging = nil
+                return
+            end
+            
             -- Check if this was a click (minimal movement) or a drag
             local wasDragged = false
             if game.dragging.clickX and game.dragging.clickY then
@@ -568,8 +652,8 @@ function love.mousereleased(x, y, button)
                             game.holdCount = game.holdCount - 1
                         end
                         
-                        -- Place card on field
-                        game.field[gridY .. "," .. gridX] = {
+                        -- Place card in plannedCards instead of directly on field
+                        game.plannedCards[gridY .. "," .. gridX] = {
                             type = game.dragging.type,
                             flipped = game.dragging.flipped,
                             rotation = 0  -- No rotation for now
@@ -586,8 +670,8 @@ function love.mousereleased(x, y, button)
                             end
                         end
                         
-                        -- Update the alive tiles after placing a card
-                        updateAliveTiles()
+                        -- Remove the tile from alive tiles (since a planned card is occupying it)
+                        removeFromAliveTiles(gridX, gridY)
                     else
                         -- Card connections don't match or not an alive tile
                         -- provide visual feedback
@@ -617,6 +701,35 @@ function love.keypressed(key)
         -- Debug key to test advancing the day clock
         advanceDayClock()
     end
+end
+
+-- End the current shift, build all planned cards, and advance the day
+function endShift()
+    -- First, build all planned cards (move them to the field)
+    for pos, cardData in pairs(game.plannedCards) do
+        -- Add to permanent field
+        game.field[pos] = cardData
+    end
+    
+    -- Clear the planned cards
+    game.plannedCards = {}
+    
+    -- Update alive tiles now that all cards are built
+    updateAliveTiles()
+    
+    -- Advance the day clock
+    advanceDayClock()
+    
+    -- Discard non-held cards from hand
+    discardHand()
+    
+    -- Draw new cards to fill the hand
+    local handCapacity = HAND_CARDS_PER_ROW * HAND_ROWS
+    local cardsToAdd = handCapacity - #game.cards
+    drawCardsFromDeck(cardsToAdd)
+    
+    -- Reset play count for the new round
+    game.playCount = 0
 end
 
 -- Generate the initial mineshaft structure
@@ -679,7 +792,8 @@ function updateAliveTiles()
     
     -- Helper function to check if a tile is empty
     local function isTileEmpty(x, y)
-        return game.field[y .. "," .. x] == nil
+        local pos = y .. "," .. x
+        return game.field[pos] == nil and game.plannedCards[pos] == nil
     end
     
     -- Helper function to check if a specific coordinate is already in alive tiles
@@ -692,8 +806,62 @@ function updateAliveTiles()
         return false
     end
     
-    -- For each card on the field, check its open edges
+    -- First check all permanent cards on the field
     for pos, cardData in pairs(game.field) do
+        local y, x = string.match(pos, "(%d+),(%d+)")
+        x, y = tonumber(x), tonumber(y)
+        
+        -- Get the card data with flip state considered
+        local pathData = cardData.flipped and 
+                         getFlippedCardData(cardData.type, true) or 
+                         CARD_PATH_DATA[cardData.type]
+        
+        -- Check each direction for open paths
+        local adjacentPositions = {
+            {dir = DIRECTION.TOP, x = x, y = y - 1},
+            {dir = DIRECTION.RIGHT, x = x + 1, y = y},
+            {dir = DIRECTION.BOTTOM, x = x, y = y + 1},
+            {dir = DIRECTION.LEFT, x = x - 1, y = y}
+        }
+        
+        for _, adj in ipairs(adjacentPositions) do
+            -- First check if the edge has a path
+            if pathData.edges[adj.dir] then
+                -- Check if this edge is part of a dead end (single-direction path)
+                local isDeadEnd = true
+                
+                -- Find which path this edge belongs to
+                for _, path in ipairs(pathData.paths) do
+                    -- Check if this path contains our direction
+                    local containsDir = false
+                    for _, dir in ipairs(path) do
+                        if dir == adj.dir then
+                            containsDir = true
+                            break
+                        end
+                    end
+                    
+                    -- If this path contains our direction and has multiple connections, it's not a dead end
+                    if containsDir and #path > 1 then
+                        isDeadEnd = false
+                        break
+                    end
+                end
+                
+                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) then
+                    -- And if it's not already in our alive tiles list
+                    if not isInAliveTiles(adj.x, adj.y) then
+                        -- Add to alive tiles (without grid or field restrictions)
+                        table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Then check all planned cards (for additional alive tiles)
+    for pos, cardData in pairs(game.plannedCards) do
         local y, x = string.match(pos, "(%d+),(%d+)")
         x, y = tonumber(x), tonumber(y)
         
@@ -914,4 +1082,67 @@ function getDayClockState()
         remainingSegments = game.dayClock.remainingSegments,
         day = game.dayClock.day
     }
-end 
+end
+
+-- Helper function to add a specific tile to alive tiles if it meets criteria
+function addToAliveTiles(x, y)
+    -- Check if this position should be an alive tile
+    local isAlive = false
+    
+    -- Check adjacent cells for any cards with open edges facing this position
+    local adjacentPositions = {
+        {x = x, y = y - 1, direction = DIRECTION.BOTTOM, opposite = DIRECTION.TOP},
+        {x = x + 1, y = y, direction = DIRECTION.LEFT, opposite = DIRECTION.RIGHT},
+        {x = x, y = y + 1, direction = DIRECTION.TOP, opposite = DIRECTION.BOTTOM},
+        {x = x - 1, y = y, direction = DIRECTION.RIGHT, opposite = DIRECTION.LEFT}
+    }
+    
+    for _, adj in ipairs(adjacentPositions) do
+        local adjPos = adj.y .. "," .. adj.x
+        local adjCard = game.field[adjPos] or game.plannedCards[adjPos]
+        
+        if adjCard then
+            local adjCardData = adjCard.flipped and 
+                               getFlippedCardData(adjCard.type, true) or 
+                               CARD_PATH_DATA[adjCard.type]
+                               
+            -- If this adjacent card has an edge facing our position, this position is alive
+            if adjCardData.edges[adj.direction] then
+                isAlive = true
+                break
+            end
+        end
+    end
+    
+    -- If this position is already in the field or planned cards, it's not alive
+    local pos = y .. "," .. x
+    if game.field[pos] or game.plannedCards[pos] then
+        isAlive = false
+    end
+    
+    -- If it should be alive and isn't already in the list, add it
+    if isAlive then
+        local alreadyInList = false
+        for _, tile in ipairs(game.aliveTiles) do
+            if tile.x == x and tile.y == y then
+                alreadyInList = true
+                break
+            end
+        end
+        
+        if not alreadyInList then
+            table.insert(game.aliveTiles, {x = x, y = y})
+        end
+    end
+end
+
+-- Helper function to remove a specific tile from alive tiles
+function removeFromAliveTiles(x, y)
+    -- Find and remove the tile from alive tiles if it exists
+    for i, tile in ipairs(game.aliveTiles) do
+        if tile.x == x and tile.y == y then
+            table.remove(game.aliveTiles, i)
+            break
+        end
+    end
+end

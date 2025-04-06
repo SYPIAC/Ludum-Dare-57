@@ -38,7 +38,8 @@ local COLORS = {
     hold_border = {1, 0.8, 0},     -- Gold for held card border
     clock_face = {1, 1, 0},        -- Yellow for clock face
     clock_segment_used = {0, 0, 0}, -- Black for used clock segments
-    clock_dividers = {0.5, 0.5, 0.5} -- Gray for clock segment dividers
+    clock_dividers = {0.5, 0.5, 0.5}, -- Gray for clock segment dividers
+    planned_overlay = {0.5, 0.5, 0.5, 0.5} -- Semi-transparent gray for planned cards
 }
 
 -- Shared reference to game state and assets (will be set from main.lua)
@@ -110,7 +111,7 @@ function ui.draw()
     love.graphics.rectangle("fill", drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
     love.graphics.setColor(0, 0, 0)
     love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("DRAW", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
+    love.graphics.printf("END SHIFT", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
     
     -- Draw cards in hand (except the one being dragged)
     for i, card in ipairs(game.cards) do
@@ -245,7 +246,7 @@ function ui.drawFieldGrid()
 end
 
 function ui.drawFieldCards()
-    -- Draw cards that have been placed on the field
+    -- Draw cards that have been placed on the field (permanent cards)
     for pos, cardData in pairs(game.field) do
         local y, x = string.match(pos, "(%d+),(%d+)")
         x, y = tonumber(x), tonumber(y)
@@ -274,6 +275,42 @@ function ui.drawFieldCards()
                 CARD_WIDTH/2,  -- origin x (center of card)
                 CARD_HEIGHT/2  -- origin y (center of card)
             )
+        end
+    end
+    
+    -- Draw planned cards with gray overlay
+    for pos, cardData in pairs(game.plannedCards) do
+        local y, x = string.match(pos, "(%d+),(%d+)")
+        x, y = tonumber(x), tonumber(y)
+        
+        -- Get the top-left corner of the card
+        local screenX, screenY = ui.gridToScreen(x, y)
+        
+        -- Only draw if the card is in view
+        if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
+           screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+            -- Draw the card
+            love.graphics.setColor(1, 1, 1)
+            
+            -- Handle rotation for flipped cards (180 degrees = pi radians)
+            local rotation = cardData.rotation
+            if cardData.flipped then
+                rotation = rotation + math.pi
+            end
+            
+            love.graphics.draw(
+                assets.cards[cardData.type], 
+                screenX + CARD_WIDTH/2, 
+                screenY + CARD_HEIGHT/2, 
+                rotation,  -- rotation in radians
+                1, 1,      -- scale x, scale y
+                CARD_WIDTH/2,  -- origin x (center of card)
+                CARD_HEIGHT/2  -- origin y (center of card)
+            )
+            
+            -- Draw gray overlay to indicate planned status
+            love.graphics.setColor(unpack(COLORS.planned_overlay))
+            love.graphics.rectangle("fill", screenX, screenY, CARD_WIDTH, CARD_HEIGHT)
         end
     end
 end
