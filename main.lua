@@ -644,11 +644,15 @@ function love.mousereleased(x, y, button)
                                 game.plannedCards[newPosition] = cardData
                                 
                                 -- Add the tile back to alive tiles
-                                local oldY, oldX = string.match(game.dragging.plannedPosition, "(%d+),(%d+)")
-                                addToAliveTiles(tonumber(oldX), tonumber(oldY))
+                                local gridY, gridX = string.match(game.dragging.plannedPosition, "(%d+),([%-%d]+)")
+                                gridX, gridY = tonumber(gridX), tonumber(gridY)
                                 
-                                -- Remove the new position from alive tiles
-                                removeFromAliveTiles(gridX, gridY)
+                                -- Skip if coordinates are invalid
+                                if gridX ~= nil and gridY ~= nil then
+                                    addToAliveTiles(gridX, gridY)
+                                else
+                                    print("Warning: Invalid position format in dragging: " .. game.dragging.plannedPosition)
+                                end
                             end
                         end
                     end
@@ -670,10 +674,6 @@ function love.mousereleased(x, y, button)
                     
                     -- Decrement play count
                     game.playCount = game.playCount - 1
-                    
-                    -- Add the tile back to alive tiles
-                    local gridY, gridX = string.match(game.dragging.plannedPosition, "(%d+),(%d+)")
-                    addToAliveTiles(tonumber(gridX), tonumber(gridY))
                     
                     -- Update hand positions
                     updateHandPositions()
@@ -928,8 +928,14 @@ function updateAliveTiles()
     
     -- First check all permanent cards on the field
     for pos, cardData in pairs(game.field) do
-        local y, x = string.match(pos, "(%d+),(%d+)")
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")
         x, y = tonumber(x), tonumber(y)
+        
+        -- Skip invalid coordinates
+        if x == nil or y == nil then
+            print("Warning: Invalid position format in updateAliveTiles (field): " .. pos)
+            goto continue_field
+        end
         
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
@@ -984,12 +990,20 @@ function updateAliveTiles()
                 end
             end
         end
+        
+        ::continue_field::
     end
     
     -- Then check all planned cards (for additional alive tiles)
     for pos, cardData in pairs(game.plannedCards) do
-        local y, x = string.match(pos, "(%d+),(%d+)")
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")
         x, y = tonumber(x), tonumber(y)
+        
+        -- Skip invalid coordinates
+        if x == nil or y == nil then
+            print("Warning: Invalid position format in updateAliveTiles (plannedCards): " .. pos)
+            goto continue_planned
+        end
         
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
@@ -1044,6 +1058,8 @@ function updateAliveTiles()
                 end
             end
         end
+        
+        ::continue_planned::
     end
 end
 
@@ -1436,8 +1452,14 @@ function predictAliveAndHoldCapacity()
     
     -- Calculate alive tiles using the temporary field
     for pos, cardData in pairs(tempField) do
-        local y, x = string.match(pos, "(%d+),(%d+)")
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")
         x, y = tonumber(x), tonumber(y)
+        
+        -- Skip invalid coordinates
+        if x == nil or y == nil then
+            print("Warning: Invalid position format in predictAliveAndHoldCapacity: " .. pos)
+            goto continue_prediction
+        end
         
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
@@ -1492,6 +1514,8 @@ function predictAliveAndHoldCapacity()
                 end
             end
         end
+        
+        ::continue_prediction::
     end
     
     -- Calculate predicted hold capacity using the same method as calculateCurrentHoldCapacity

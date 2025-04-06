@@ -373,7 +373,7 @@ end
 function ui.drawFieldCards()
     -- Draw cards that have been placed on the field (permanent cards)
     for pos, cardData in pairs(game.field) do
-        local y, x = string.match(pos, "(%d+),(%d+)")
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")  -- Update regex to handle negative numbers
         x, y = tonumber(x), tonumber(y)
         
         -- Check if x and y are valid before attempting to draw
@@ -411,7 +411,7 @@ function ui.drawFieldCards()
     
     -- Draw planned cards with gray overlay
     for pos, cardData in pairs(game.plannedCards) do
-        local y, x = string.match(pos, "(%d+),(%d+)")
+        local y, x = string.match(pos, "(%d+),([%-%d]+)")  -- Update regex to handle negative numbers
         x, y = tonumber(x), tonumber(y)
         
         -- Check if x and y are valid before attempting to draw
