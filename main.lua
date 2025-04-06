@@ -10,7 +10,7 @@ local GRID_OFFSET_Y = 40  -- Add some space at the top
 local GRID_COLS = 10  -- Number of grid cells horizontally
 local GRID_ROWS = 7  -- Number of grid cells vertically (reduced to account for full card height)
 local HAND_HEIGHT = 200  -- Height of the hand area
-local HAND_CARDS_PER_ROW = 5  -- Cards per row in hand
+local HAND_CARDS_PER_ROW = 6  -- Cards per row in hand
 local HAND_ROWS = 2  -- Number of rows in hand
 local FIELD_HEIGHT = SCREEN_HEIGHT - HAND_HEIGHT
 local STATUS_BAR_WIDTH = 120  -- Width of the status bar on the right
@@ -23,6 +23,10 @@ local GAME_FIELD_DEPTH = 100   -- Maximum mining depth in cells
 -- Biome boundaries
 local SURFACE_LEVEL = 0  -- y < SURFACE_LEVEL: surface (brown, no grid)
 local DEEP_MINE_LEVEL = 10  -- y >= DEEP_MINE_LEVEL: deep mine (gray)
+
+-- Game rules
+local MAX_HOLD_CARDS = 3  -- Maximum number of cards a player can hold between rounds
+local MAX_PLAY_CARDS = 5  -- Maximum number of cards a player can play in a round
 
 -- Viewport/scrolling
 local viewport = {
@@ -213,7 +217,16 @@ local game = {
     aliveTiles = {},   -- List of coordinates for "alive" tiles (reachable empty tiles)
     drawButtonHover = false,  -- Track if mouse is hovering over draw button
     CARD_PATH_DATA = CARD_PATH_DATA,  -- Make card path data accessible to UI
-    canPlaceCard = nil -- Function reference to be set in love.load
+    canPlaceCard = nil, -- Function reference to be set in love.load
+    holdCount = 0,   -- Number of cards currently on hold
+    playCount = 0,   -- Number of cards played in the current round
+    maxHoldCards = MAX_HOLD_CARDS,  -- Maximum number of cards that can be held
+    maxPlayCards = MAX_PLAY_CARDS,   -- Maximum number of cards that can be played
+    dayClock = {     -- Day clock state
+        totalSegments = 6,      -- Total number of segments in the day (4, 5, or 6)
+        remainingSegments = 6,  -- Number of segments remaining in the day
+        day = 1                 -- Current day
+    }
 }
 
 -- Load assets
@@ -334,31 +347,34 @@ function love.load()
     generateDeck()
     
     -- Draw initial hand
-    drawCardsFromDeck(8)
+    drawCardsFromDeck(12)
     
     -- Generate the initial mineshaft structure
     generateInitialMineshaft()
     
     -- Initialize RNG
     love.math.setRandomSeed(os.time())
+    
+    -- Initialize the day clock
+    setDayClockSegments(6)  -- Start with 6 segments by default
 end
 
 function updateHandPositions()
     local cardSpacingX = CARD_WIDTH + 5
     local handStartX = 16
-    local handStartY = SCREEN_HEIGHT - HAND_HEIGHT + 10
+    local handStartY = SCREEN_HEIGHT - HAND_HEIGHT + 0
     
     for i, card in ipairs(game.cards) do
         local row = math.ceil(i / HAND_CARDS_PER_ROW)
         local col = (i - 1) % HAND_CARDS_PER_ROW + 1
         
-        -- Skip deck and discard positions (rightmost two slots in top row)
-        if row == 1 and col > 3 then
-            col = col + 2  -- Skip positions 4 and 5 in top row
-        end
-        
         card.x = handStartX + (col - 1) * cardSpacingX
         card.y = handStartY + (row - 1) * (CARD_HEIGHT + 5)
+        
+        -- Lift held cards up by 8 pixels
+        if card.held then
+            card.y = card.y - 4
+        end
     end
 end
 
@@ -437,6 +453,15 @@ function love.mousepressed(x, y, button)
             -- Discard current hand and draw new cards
             discardHand()
             drawCardsFromDeck()
+            
+            -- Advance the day clock
+            local dayChanged = advanceDayClock()
+            if dayChanged then
+                -- Handle day change if needed (e.g., special events at day start)
+                -- This is just a placeholder for future functionality
+                print("A new day has dawned! Day " .. game.dayClock.day)
+            end
+            
             return
         end
         
@@ -462,11 +487,16 @@ function love.mousepressed(x, y, button)
                 viewport.lastMouseY = y
             end
         else
-            -- In hand area, check for card dragging
+            -- In hand area, check for card dragging or toggle hold state
+            local cardClicked = false
             for i, card in ipairs(game.cards) do
                 if x >= card.x and x <= card.x + CARD_WIDTH and
                    y >= card.y and y <= card.y + CARD_HEIGHT then
+                    -- Track initial click position to determine if this is a drag or a click
+                    card.clickX = x
+                    card.clickY = y
                     game.dragging = card
+                    cardClicked = true
                     break
                 end
             end
@@ -493,6 +523,35 @@ function love.mousereleased(x, y, button)
         
         -- Handle card placement if dragging a card
         if game.dragging then
+            -- Check if this was a click (minimal movement) or a drag
+            local wasDragged = false
+            if game.dragging.clickX and game.dragging.clickY then
+                local dx = x - game.dragging.clickX
+                local dy = y - game.dragging.clickY
+                wasDragged = math.abs(dx) > 5 or math.abs(dy) > 5
+                
+                -- Clear click tracking
+                game.dragging.clickX = nil
+                game.dragging.clickY = nil
+            end
+            
+            -- If it was a click in the hand area, toggle hold state
+            if not wasDragged and y >= FIELD_HEIGHT then
+                -- Toggle hold state only if not exceeding max hold cards
+                if not game.dragging.held and game.holdCount < game.maxHoldCards then
+                    game.dragging.held = true
+                    game.holdCount = game.holdCount + 1
+                elseif game.dragging.held then
+                    game.dragging.held = false
+                    game.holdCount = game.holdCount - 1
+                end
+                
+                -- Keep dragging as nil to indicate no movement
+                game.dragging = nil
+                updateHandPositions()
+                return
+            end
+            
             -- Check if card was dropped on the field
             if y < FIELD_HEIGHT then
                 -- Convert screen position to grid
@@ -504,12 +563,20 @@ function love.mousereleased(x, y, button)
                    
                     -- Check if the card can be placed at this location (connections are valid)
                     if canPlaceCard(game.dragging.type, gridX, gridY, game.dragging.flipped) then
+                        -- If the card was held, decrement hold count
+                        if game.dragging.held then
+                            game.holdCount = game.holdCount - 1
+                        end
+                        
                         -- Place card on field
                         game.field[gridY .. "," .. gridX] = {
                             type = game.dragging.type,
                             flipped = game.dragging.flipped,
                             rotation = 0  -- No rotation for now
                         }
+                        
+                        -- Increment play count
+                        game.playCount = game.playCount + 1
                         
                         -- Remove card from hand
                         for i, card in ipairs(game.cards) do
@@ -546,8 +613,9 @@ function love.draw()
 end
 
 function love.keypressed(key)
-    if key == "escape" then
-        love.event.quit()
+    if key == "d" then
+        -- Debug key to test advancing the day clock
+        advanceDayClock()
     end
 end
 
@@ -731,14 +799,21 @@ end
 
 -- Discard all cards from hand
 function discardHand()
-    -- Move all cards from hand to discard pile
-    for _, card in ipairs(game.cards) do
-        table.insert(game.discard.cards, card.type)
-        game.discard.count = game.discard.count + 1
+    -- Move all non-held cards from hand to discard pile
+    local i = 1
+    while i <= #game.cards do
+        local card = game.cards[i]
+        if not card.held then
+            table.insert(game.discard.cards, card.type)
+            game.discard.count = game.discard.count + 1
+            table.remove(game.cards, i)
+        else
+            i = i + 1
+        end
     end
     
-    -- Clear the hand
-    game.cards = {}
+    -- Reset play count for the new round
+    game.playCount = 0
     
     -- If deck is empty but discard has cards, shuffle discard into deck
     if game.deck.count == 0 and game.discard.count > 0 then
@@ -748,12 +823,16 @@ function discardHand()
         game.discard.count = 0
         shuffleDeck()
     end
+    
+    -- Update hand positions after removing cards
+    updateHandPositions()
 end
 
 -- Draw cards from the deck to fill the player's hand
 function drawCardsFromDeck(numCards)
     -- Default to drawing up to hand capacity if not specified
-    numCards = numCards or (HAND_CARDS_PER_ROW * HAND_ROWS - #game.cards)
+    local handCapacity = HAND_CARDS_PER_ROW * HAND_ROWS
+    numCards = numCards or (handCapacity - #game.cards)
     
     -- Limit by how many cards are actually available
     numCards = math.min(numCards, game.deck.count)
@@ -782,7 +861,8 @@ function drawCardsFromDeck(numCards)
                 x = 0, 
                 y = 0, 
                 type = cardType, 
-                flipped = false 
+                flipped = false,
+                held = false
             })
         end
     end
@@ -794,4 +874,44 @@ end
 -- Check if point is within rectangle
 function pointInRect(x, y, rx, ry, rw, rh)
     return x >= rx and x <= rx + rw and y >= ry and y <= ry + rh
+end
+
+-- Functions for manipulating the day clock
+function setDayClockSegments(numSegments)
+    -- Validate and set the number of segments (4, 5, or 6 are valid)
+    if numSegments >= 4 and numSegments <= 6 then
+        game.dayClock.totalSegments = numSegments
+        game.dayClock.remainingSegments = numSegments
+        return true
+    end
+    return false
+end
+
+function advanceDayClock()
+    -- Remove one segment from the clock
+    if game.dayClock.remainingSegments > 0 then
+        game.dayClock.remainingSegments = game.dayClock.remainingSegments - 1
+        
+        -- If we've reached the end of the day, reset the clock and advance to next day
+        if game.dayClock.remainingSegments == 0 then
+            game.dayClock.day = game.dayClock.day + 1
+            game.dayClock.remainingSegments = game.dayClock.totalSegments
+            return true  -- Return true to indicate a day change
+        end
+    end
+    return false  -- Return false to indicate no day change
+end
+
+function resetDayClock()
+    -- Reset the clock to full segments without changing the day
+    game.dayClock.remainingSegments = game.dayClock.totalSegments
+end
+
+function getDayClockState()
+    -- Return a copy of the current day clock state
+    return {
+        totalSegments = game.dayClock.totalSegments,
+        remainingSegments = game.dayClock.remainingSegments,
+        day = game.dayClock.day
+    }
 end 

@@ -35,6 +35,10 @@ local COLORS = {
     highlight = {0.5, 0.5, 0.7, 0.3}, -- Bluish highlight
     surface = {0.6, 0.4, 0.2},     -- Brown for surface (above ground)
     deep_mine = {0.3, 0.3, 0.35},  -- Grayish for deep mine
+    hold_border = {1, 0.8, 0},     -- Gold for held card border
+    clock_face = {1, 1, 0},        -- Yellow for clock face
+    clock_segment_used = {0, 0, 0}, -- Black for used clock segments
+    clock_dividers = {0.5, 0.5, 0.5} -- Gray for clock segment dividers
 }
 
 -- Shared reference to game state and assets (will be set from main.lua)
@@ -148,12 +152,13 @@ function ui.draw()
     love.graphics.setColor(unpack(COLORS.top_bar))
     love.graphics.rectangle("fill", 0, 0, SCREEN_WIDTH, 40)
     
-    -- Debug: draw coordinates info
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.setFont(assets.smallFont)
-    local mx, my = love.mouse.getPosition()
-    local gx, gy = ui.screenToGrid(mx, my)
-    love.graphics.print("View: " .. viewport.offsetX .. "," .. viewport.offsetY .. " Mouse: " .. gx .. "," .. gy, 10, 10)
+    -- Draw player information text about card limits
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.setFont(assets.font)
+    local infoText = string.format("You can play %d/%d cards and hold %d/%d cards", 
+                                  game.playCount, game.maxPlayCards,
+                                  game.holdCount, game.maxHoldCards)
+    love.graphics.printf(infoText, 10, 10, FIELD_WIDTH - 20, "center")
     
     -- Draw popup for deck or discard if hovering
     if deckHover then
@@ -169,15 +174,14 @@ function ui.drawStatusBar()
     love.graphics.setColor(unpack(COLORS.status_bar))
     love.graphics.rectangle("fill", SCREEN_WIDTH - STATUS_BAR_WIDTH, 40, STATUS_BAR_WIDTH, FIELD_HEIGHT - 40)
     
-    -- Draw "FOREMAN DAY 1" text
+    -- Draw "FOREMAN DAY X" text
     love.graphics.setColor(unpack(COLORS.text))
     love.graphics.setFont(assets.font)
     love.graphics.printf("FOREMAN", SCREEN_WIDTH - STATUS_BAR_WIDTH, 50, STATUS_BAR_WIDTH, "center")
-    love.graphics.printf("DAY 1", SCREEN_WIDTH - STATUS_BAR_WIDTH, 70, STATUS_BAR_WIDTH, "center")
+    love.graphics.printf("DAY " .. game.dayClock.day, SCREEN_WIDTH - STATUS_BAR_WIDTH, 70, STATUS_BAR_WIDTH, "center")
     
-    -- Draw clock
-    love.graphics.setColor(1, 1, 0)  -- Yellow
-    love.graphics.circle("fill", SCREEN_WIDTH - STATUS_BAR_WIDTH/2, 120, 30)
+    -- Draw day clock
+    ui.drawDayClock(SCREEN_WIDTH - STATUS_BAR_WIDTH/2, 120, 30)
     
     -- Draw SCORE
     love.graphics.setColor(unpack(COLORS.text))
@@ -275,6 +279,13 @@ function ui.drawFieldCards()
 end
 
 function ui.drawCard(card)
+    -- Draw highlight for held cards
+    if card.held then
+        love.graphics.setColor(unpack(COLORS.hold_border))
+        -- Draw a slightly larger rectangle for the border
+        love.graphics.rectangle("line", card.x - 2, card.y - 2, CARD_WIDTH + 4, CARD_HEIGHT + 4, 2, 2)
+    end
+    
     love.graphics.setColor(1, 1, 1)
     
     -- Handle flipped cards (180 degree rotation)
@@ -482,6 +493,88 @@ function ui.drawCardDistributionPopup(cardList, anchorX, anchorY)
         love.graphics.setFont(assets.smallFont)
         love.graphics.print("x" .. count, x + cardDisplayWidth + 2, y + cardDisplayHeight / 2 - 6)
     end
+end
+
+-- Function to draw the day clock with segments
+function ui.drawDayClock(centerX, centerY, radius)
+    local totalSegments = game.dayClock.totalSegments
+    local remainingSegments = game.dayClock.remainingSegments
+    
+    -- Draw base clock circle (background)
+    love.graphics.setColor(0.3, 0.3, 0.3)  -- Dark gray background
+    love.graphics.circle("fill", centerX, centerY, radius)
+    
+    -- If all segments are used, just return (fully black circle)
+    if remainingSegments <= 0 then
+        return
+    end
+    
+    -- Calculate angle per segment
+    local anglePerSegment = 2 * math.pi / totalSegments
+    
+    -- Draw the remaining segments
+    love.graphics.setColor(unpack(COLORS.clock_face))
+    
+    -- If all segments remain, draw a full circle
+    if remainingSegments == totalSegments then
+        love.graphics.circle("fill", centerX, centerY, radius)
+    else
+        -- We need to draw the remaining segments, skipping the ones we've used
+        -- First segment removed should be the 12-3 o'clock position (offset by 1)
+        local usedSegments = totalSegments - remainingSegments
+        
+        -- Draw each segment individually
+        for i = 0, totalSegments - 1 do
+            -- Check if this segment should be visible or has been used up
+            local isUsed = i < usedSegments
+            
+            if not isUsed then
+                -- Draw this segment
+                local startAngle = -math.pi/2 + i * anglePerSegment
+                ui.drawPieSegment(centerX, centerY, radius, startAngle, startAngle + anglePerSegment)
+            end
+        end
+    end
+    
+    -- Draw segment divider lines
+    love.graphics.setColor(unpack(COLORS.clock_dividers))
+    love.graphics.setLineWidth(2)
+    
+    for i = 0, totalSegments - 1 do
+        local angle = -math.pi/2 + i * anglePerSegment
+        local x = centerX + radius * math.cos(angle)
+        local y = centerY + radius * math.sin(angle)
+        love.graphics.line(centerX, centerY, x, y)
+    end
+    
+    -- Draw clock border
+    love.graphics.circle("line", centerX, centerY, radius)
+    
+    -- Reset line width
+    love.graphics.setLineWidth(1)
+end
+
+-- Helper function to draw a pie segment
+function ui.drawPieSegment(centerX, centerY, radius, startAngle, endAngle)
+    -- Create a polygon approximating the pie segment
+    local segments = 20  -- Number of line segments to use for approximation
+    local vertices = {}
+    
+    -- Add the center point
+    table.insert(vertices, centerX)
+    table.insert(vertices, centerY)
+    
+    -- Add points along the arc
+    for i = 0, segments do
+        local angle = startAngle + (endAngle - startAngle) * (i / segments)
+        local x = centerX + radius * math.cos(angle)
+        local y = centerY + radius * math.sin(angle)
+        table.insert(vertices, x)
+        table.insert(vertices, y)
+    end
+    
+    -- Draw the filled polygon
+    love.graphics.polygon("fill", vertices)
 end
 
 -- Return the UI module
