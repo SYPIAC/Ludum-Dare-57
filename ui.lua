@@ -806,9 +806,17 @@ function ui.drawDayOverOverlay()
     -- Draw text centered on screen
     love.graphics.print(text, SCREEN_WIDTH/2 - textW/2, SCREEN_HEIGHT/2 - textH/2)
     
-    -- Instruction text
+    -- Instruction text - use the reason from the game state
     love.graphics.setColor(1, 1, 1)
-    local infoText = "You've run out of cards for the day"
+    local infoText = ""
+    
+    -- Check what the reason for the day ending was
+    if game.dayOverReason == "Used all shifts for the day" then
+        infoText = "You've used all available shifts for today"
+    else
+        infoText = "You've run out of cards for the day"
+    end
+    
     local infoW = assets.font:getWidth(infoText)
     
     -- Draw info text below day over text

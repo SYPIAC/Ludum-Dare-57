@@ -1130,7 +1130,7 @@ function discardHand()
     
     -- If deck is empty but discard has cards, end the day instead of reshuffling
     if game.deck.count == 0 and game.discard.count > 0 then
-        game.endDay()
+        game.endDay("Run out of cards")
     end
     
     -- Update hand positions after removing cards
@@ -1162,7 +1162,7 @@ function drawCardsFromDeck(numCards)
     
     -- If deck is empty but discard has cards, end the day instead of reshuffling
     if numCards > 0 and game.deck.count == 0 and game.discard.count > 0 then
-        game.endDay()
+        game.endDay("Run out of cards")
         return 0
     end
     
@@ -1211,31 +1211,17 @@ function advanceDayClock()
     if game.dayClock.remainingSegments > 0 then
         game.dayClock.remainingSegments = game.dayClock.remainingSegments - 1
         
-        -- If we've reached the end of the day, reset the clock and advance to next day
+        -- If we've reached the end of the day, set day over state and prepare for next day
         if game.dayClock.remainingSegments == 0 then
-            -- Before advancing to the next day, check if there are any danger tiles remaining
+            -- Before preparing for the next day, check if there are any danger tiles remaining
             -- Only check for game over condition after the first day
             if game.dayClock.day > 1 and #game.dangerTiles > 0 then
                 game.over("Danger tiles remain at the end of the day")
                 return false
             end
             
-            -- Empty the discard pile first
-            game.discard.cards = {}
-            game.discard.count = 0
-            
-            -- Regenerate the deck to start the new day with a fresh deck
-            generateDeck()
-            
-            -- Advance to the next day
-            game.dayClock.day = game.dayClock.day + 1
-            game.dayClock.remainingSegments = game.dayClock.totalSegments
-            
-            -- Set new danger tiles for the next day
-            setDangerTiles()
-            
-            -- Play the day start sound
-            playDayStartSound()
+            -- End the day with reason
+            game.endDay("Used all shifts for the day")
             
             return true  -- Return true to indicate a day change
         end
@@ -1573,9 +1559,10 @@ function setDangerTiles()
 end
 
 -- Function to end a day due to running out of cards
-function game.endDay()
+function game.endDay(reason)
     game.isDayOver = true
-    print("DAY OVER: Run out of cards")
+    print("DAY OVER: " .. (reason or "Run out of cards"))
+    game.dayOverReason = reason or "Run out of cards"
 end
 
 -- Function to play the day start sound

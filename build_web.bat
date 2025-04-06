@@ -3,7 +3,7 @@ echo Building web export for FOREMAN...
 
 if exist game.love del game.love
 echo Creating game.love package...
-powershell -Command "Compress-Archive -Force -Path main.lua, ui.lua, conf.lua, img -DestinationPath game.zip"
+powershell -Command "Compress-Archive -Force -Path main.lua, ui.lua, conf.lua, img, sounds -DestinationPath game.zip"
 if %ERRORLEVEL% NEQ 0 (
     echo Error creating game.zip
     pause
