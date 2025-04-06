@@ -52,12 +52,18 @@ local DIRECTION = nil
 local deckHover = false
 local discardHover = false
 
+-- UI assets
+local dangerImage = nil -- Image for danger tile overlay
+
 -- Initialize the UI module with references to game state and assets
 function ui.init(gameState, gameAssets, viewportState, directionEnum)
     game = gameState
     assets = gameAssets
     viewport = viewportState
     DIRECTION = directionEnum
+    
+    -- Load UI specific assets
+    dangerImage = love.graphics.newImage("img/danger.png")
     
     -- Set up references to any prediction functions
     predictAliveAndHoldCapacity = _G.predictAliveAndHoldCapacity
@@ -76,6 +82,9 @@ function ui.draw()
     
     -- Draw cards placed on the field
     ui.drawFieldCards()
+    
+    -- Draw danger tile overlays (on top of cards)
+    ui.drawDangerTileOverlays()
     
     -- Draw status bar
     ui.drawStatusBar()
@@ -117,9 +126,9 @@ function ui.draw()
     love.graphics.printf("END SHIFT", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
     
     -- Add predicted draw information below button
-    local predictedAliveTiles, _ = predictAliveAndHoldCapacity()
-    local currentDrawAmount = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1.5))
-    local futureDrawAmount = math.min(12, 2 + math.floor(predictedAliveTiles * 1.5))
+    local predictedAliveTiles, predictedHoldCapacity, dangerTiles = predictAliveAndHoldCapacity()
+    local currentDrawAmount = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
+    local futureDrawAmount = game.calculateDrawAmount(predictedAliveTiles)
     local drawDifference = futureDrawAmount - currentDrawAmount
 
     -- Display text about the predicted draw amount - moved under deck display and enlarged
@@ -193,7 +202,7 @@ function ui.draw()
     love.graphics.setFont(assets.font)
 
     -- Calculate predicted values for display
-    local predictedAliveTiles, predictedHoldCapacity = predictAliveAndHoldCapacity()
+    local predictedAliveTiles, predictedHoldCapacity, _ = predictAliveAndHoldCapacity()
     local aliveTilesDiff = predictedAliveTiles - game.shiftStartAliveTilesCount
     local holdCapacityDiff = predictedHoldCapacity - game.currentHoldCapacity
 
@@ -316,6 +325,36 @@ function ui.drawFieldGrid()
                         love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
                     end
                 end
+            end
+        end
+    end
+end
+
+-- Draw danger overlays for the hold tiles (tiles that contribute to hold capacity)
+function ui.drawDangerTileOverlays()
+    -- Calculate visible grid range
+    local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
+    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
+    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    
+    -- Ensure we're not trying to draw too many cells
+    startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)
+    endCol = math.min(GRID_COLS + GAME_FIELD_WIDTH_EXTENSION, endCol)
+    startRow = math.max(SURFACE_LEVEL, startRow)
+    endRow = math.min(GRID_ROWS + GAME_FIELD_DEPTH, endRow)
+    
+    -- Draw danger overlays for hold tiles
+    for _, tile in ipairs(game.holdTiles) do
+        -- Check if tile is within the visible range
+        if tile.x >= startCol and tile.x <= endCol and tile.y >= startRow and tile.y <= endRow then
+            local x, y = ui.gridToScreen(tile.x, tile.y)
+            
+            -- Only draw if within the visible area (not behind status bar)
+            if x <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
+                -- Use the danger image instead of color overlay
+                love.graphics.setColor(1, 1, 1, 0.7) -- Draw at 70% opacity
+                love.graphics.draw(dangerImage, x, y, 0, CARD_WIDTH / dangerImage:getWidth(), CARD_HEIGHT / dangerImage:getHeight())
             end
         end
     end

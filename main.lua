@@ -229,7 +229,12 @@ local game = {
         totalSegments = 6,      -- Total number of segments in the day (4, 5, or 6)
         remainingSegments = 6,  -- Number of segments remaining in the day
         day = 1                 -- Current day
-    }
+    },
+    
+    -- Function to calculate how many cards to draw based on alive tiles
+    calculateDrawAmount = function(aliveTilesCount)
+        return math.min(12, 2 + aliveTilesCount)
+    end
 }
 
 -- Load assets
@@ -362,11 +367,11 @@ function love.load()
     -- Initialize tracking values for alive tiles and hold capacity
     game.shiftStartAliveTilesCount = #game.aliveTiles
     game.currentHoldCapacity = calculateCurrentHoldCapacity()
-    game.maxPlayCards = game.shiftStartAliveTilesCount - 1 -- Maximum cards playable this shift
+    game.maxPlayCards = game.shiftStartAliveTilesCount -- Maximum cards playable this shift
     game.maxHoldCards = game.currentHoldCapacity  -- Hold limit is based only on connections to alive tiles
     
     -- Draw initial hand using the same formula as endShift
-    local initialCards = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1))
+    local initialCards = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(initialCards)
 end
 
@@ -731,7 +736,7 @@ function endShift()
     
     -- Update maximum cards playable and holdable
     game.shiftStartAliveTilesCount = #game.aliveTiles
-    game.maxPlayCards = game.shiftStartAliveTilesCount - 1
+    game.maxPlayCards = game.shiftStartAliveTilesCount
     game.maxHoldCards = game.currentHoldCapacity
     
     -- Advance the day clock
@@ -741,7 +746,7 @@ function endShift()
     discardHand()
     
     -- Draw new cards to fill the hand based on the number of alive tiles
-    local cardsToAdd = math.min(12, 2 + math.floor(game.shiftStartAliveTilesCount * 1.5))
+    local cardsToAdd = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
     drawCardsFromDeck(cardsToAdd)
     
     -- Reset play count for the new round
@@ -825,6 +830,21 @@ function updateAliveTiles()
         return false
     end
     
+    -- Helper function to check if a position is within valid game boundaries
+    local function isWithinBoundaries(x, y)
+        -- Check horizontal boundaries
+        if x < -GAME_FIELD_WIDTH_EXTENSION or x >= GRID_COLS + GAME_FIELD_WIDTH_EXTENSION then
+            return false
+        end
+        
+        -- Check vertical boundaries - prevent tiles above the surface (y < 0)
+        if y < 0 or y >= GRID_ROWS + GAME_FIELD_DEPTH then
+            return false
+        end
+        
+        return true
+    end
+    
     -- First check all permanent cards on the field
     for pos, cardData in pairs(game.field) do
         local y, x = string.match(pos, "(%d+),(%d+)")
@@ -867,12 +887,17 @@ function updateAliveTiles()
                     end
                 end
                 
-                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
-                -- Also skip the mineshaft entrance tile (0, centerX)
-                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and not (adj.y == 0 and adj.x == centerX) then
+                -- Only consider this tile alive if:
+                -- 1. The edge is not a dead end
+                -- 2. The adjacent tile is empty
+                -- 3. The adjacent tile is not the mineshaft entrance (0, centerX)
+                -- 4. The adjacent tile is within game boundaries
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and 
+                   not (adj.y == 0 and adj.x == centerX) and 
+                   isWithinBoundaries(adj.x, adj.y) then
                     -- And if it's not already in our alive tiles list
                     if not isInAliveTiles(adj.x, adj.y) then
-                        -- Add to alive tiles (without grid or field restrictions)
+                        -- Add to alive tiles
                         table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
                     end
                 end
@@ -922,12 +947,17 @@ function updateAliveTiles()
                     end
                 end
                 
-                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
-                -- Also skip the mineshaft entrance tile (0, centerX)
-                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and not (adj.y == 0 and adj.x == centerX) then
+                -- Only consider this tile alive if:
+                -- 1. The edge is not a dead end
+                -- 2. The adjacent tile is empty
+                -- 3. The adjacent tile is not the mineshaft entrance (0, centerX)
+                -- 4. The adjacent tile is within game boundaries
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and 
+                   not (adj.y == 0 and adj.x == centerX) and
+                   isWithinBoundaries(adj.x, adj.y) then
                     -- And if it's not already in our alive tiles list
                     if not isInAliveTiles(adj.x, adj.y) then
-                        -- Add to alive tiles (without grid or field restrictions)
+                        -- Add to alive tiles
                         table.insert(game.aliveTiles, {x = adj.x, y = adj.y})
                     end
                 end
@@ -1215,46 +1245,44 @@ function calculateCurrentHoldCapacity()
         end
     end
     
-    return holdCapacity
+    return math.max(holdCapacity - 1, 0)
 end
 
--- Predicts what the alive tiles would be after building all planned cards
+-- Function to predict alive tiles and hold capacity based on planned cards
 function predictAliveAndHoldCapacity()
-    -- Make a copy of the field and planned cards
-    local predictedField = {}
-    local futureTiles = {}
-    local futureHoldTiles = {}
+    -- Create a temporary copy of the field with planned cards included
+    local tempField = {}
     
-    -- Center column position (same as used in generateInitialMineshaft)
-    local centerX = math.floor(GRID_COLS / 2 - 1)
-    
-    -- Copy current field
+    -- Copy all existing field cards
     for pos, cardData in pairs(game.field) do
-        predictedField[pos] = {
+        tempField[pos] = {
             type = cardData.type,
             flipped = cardData.flipped,
             rotation = cardData.rotation
         }
     end
     
-    -- Add planned cards to the predicted field
+    -- Add all planned cards
     for pos, cardData in pairs(game.plannedCards) do
-        predictedField[pos] = {
+        tempField[pos] = {
             type = cardData.type,
             flipped = cardData.flipped,
             rotation = cardData.rotation
         }
     end
     
-    -- Helper function to check if a tile is empty in the predicted field
+    -- Temporary storage for predicted alive tiles
+    local predictedAliveTiles = {}
+    
+    -- Helper function to check if a tile is empty in the temporary field
     local function isTileEmpty(x, y)
         local pos = y .. "," .. x
-        return predictedField[pos] == nil
+        return tempField[pos] == nil
     end
     
-    -- Helper function to check if a specific coordinate is already in future tiles
-    local function isInFutureTiles(x, y)
-        for _, tile in ipairs(futureTiles) do
+    -- Helper function to check if a specific coordinate is already in alive tiles
+    local function isInAliveTiles(x, y)
+        for _, tile in ipairs(predictedAliveTiles) do
             if tile.x == x and tile.y == y then
                 return true
             end
@@ -1262,8 +1290,23 @@ function predictAliveAndHoldCapacity()
         return false
     end
     
-    -- Process all cards in the predicted field
-    for pos, cardData in pairs(predictedField) do
+    -- Helper function to check if a position is within valid game boundaries
+    local function isWithinBoundaries(x, y)
+        -- Check horizontal boundaries
+        if x < -GAME_FIELD_WIDTH_EXTENSION or x >= GRID_COLS + GAME_FIELD_WIDTH_EXTENSION then
+            return false
+        end
+        
+        -- Check vertical boundaries - prevent tiles above the surface (y < 0)
+        if y < 0 or y >= GRID_ROWS + GAME_FIELD_DEPTH then
+            return false
+        end
+        
+        return true
+    end
+    
+    -- Calculate alive tiles using the temporary field
+    for pos, cardData in pairs(tempField) do
         local y, x = string.match(pos, "(%d+),(%d+)")
         x, y = tonumber(x), tonumber(y)
         
@@ -1304,25 +1347,32 @@ function predictAliveAndHoldCapacity()
                     end
                 end
                 
-                -- Only consider this tile alive if the edge is not a dead end and the adjacent tile is empty
-                -- Also skip the mineshaft entrance tile (0, centerX)
-                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and not (adj.y == 0 and adj.x == centerX) then
-                    -- And if it's not already in our future tiles list
-                    if not isInFutureTiles(adj.x, adj.y) then
-                        -- Add to future tiles
-                        table.insert(futureTiles, {x = adj.x, y = adj.y})
+                -- Only consider this tile alive if:
+                -- 1. The edge is not a dead end
+                -- 2. The adjacent tile is empty
+                -- 3. The adjacent tile is not the mineshaft entrance (0, centerX)
+                -- 4. The adjacent tile is within game boundaries
+                if not isDeadEnd and isTileEmpty(adj.x, adj.y) and 
+                   not (adj.y == 0 and adj.x == centerX) and
+                   isWithinBoundaries(adj.x, adj.y) then
+                    -- And if it's not already in our alive tiles list
+                    if not isInAliveTiles(adj.x, adj.y) then
+                        -- Add to predicted alive tiles
+                        table.insert(predictedAliveTiles, {x = adj.x, y = adj.y})
                     end
                 end
             end
         end
     end
     
-    -- Calculate predicted hold capacity
+    -- Calculate predicted hold capacity using the same method as calculateCurrentHoldCapacity
+    -- but with the predicted alive tiles
     local predictedHoldCapacity = 0
+    local futureHoldTiles = {} -- Temporary storage for hold tiles (for UI overlay)
     local tilesAdjacentToAlive = {}
     
-    -- Check each future alive tile
-    for _, aliveTile in ipairs(futureTiles) do
+    -- Check each alive tile's neighbors
+    for _, aliveTile in ipairs(predictedAliveTiles) do
         -- Check all adjacent positions to this alive tile
         local adjacentPositions = {
             {x = aliveTile.x, y = aliveTile.y - 1, dir = DIRECTION.TOP, opposite = DIRECTION.BOTTOM}, -- top
@@ -1336,10 +1386,10 @@ function predictAliveAndHoldCapacity()
             local pos = adj.y .. "," .. adj.x
             
             -- If there's a card at this position and we haven't counted it yet
-            -- Skip the entrance tiles (y <= 2) as they shouldn't contribute to hold capacity
-            if predictedField[pos] and not tilesAdjacentToAlive[pos] and adj.y > 0 then
+            -- Skip the entrance tiles (y <= 0) as they shouldn't contribute to hold capacity
+            if tempField[pos] and not tilesAdjacentToAlive[pos] and adj.y > 0 and isWithinBoundaries(adj.x, adj.y) then
                 -- Get the card data to check if it has a path connection to this alive tile
-                local cardData = predictedField[pos]
+                local cardData = tempField[pos]
                 local pathData = cardData.flipped and 
                                 getFlippedCardData(cardData.type, true) or 
                                 CARD_PATH_DATA[cardData.type]
@@ -1358,6 +1408,5 @@ function predictAliveAndHoldCapacity()
         end
     end
     
-    -- Return the predicted alive tiles count, hold capacity, and hold tiles
-    return #futureTiles, predictedHoldCapacity, futureHoldTiles
+    return #predictedAliveTiles, math.max(predictedHoldCapacity - 1, 0), futureHoldTiles
 end
