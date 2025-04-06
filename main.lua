@@ -940,7 +940,6 @@ function updateAliveTiles()
         -- Skip invalid coordinates
         if x == nil or y == nil then
             print("Warning: Invalid position format in updateAliveTiles (field): " .. pos)
-            goto continue_field
         end
         
         -- Get the card data with flip state considered
@@ -996,8 +995,6 @@ function updateAliveTiles()
                 end
             end
         end
-        
-        ::continue_field::
     end
     
     -- Then check all planned cards (for additional alive tiles)
@@ -1008,7 +1005,6 @@ function updateAliveTiles()
         -- Skip invalid coordinates
         if x == nil or y == nil then
             print("Warning: Invalid position format in updateAliveTiles (plannedCards): " .. pos)
-            goto continue_planned
         end
         
         -- Get the card data with flip state considered
@@ -1064,8 +1060,6 @@ function updateAliveTiles()
                 end
             end
         end
-        
-        ::continue_planned::
     end
 end
 
@@ -1450,7 +1444,6 @@ function predictAliveAndHoldCapacity()
         -- Skip invalid coordinates
         if x == nil or y == nil then
             print("Warning: Invalid position format in predictAliveAndHoldCapacity: " .. pos)
-            goto continue_prediction
         end
         
         -- Get the card data with flip state considered
@@ -1506,8 +1499,6 @@ function predictAliveAndHoldCapacity()
                 end
             end
         end
-        
-        ::continue_prediction::
     end
     
     -- Calculate predicted hold capacity using the same method as calculateCurrentHoldCapacity

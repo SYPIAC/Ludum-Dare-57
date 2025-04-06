@@ -3,7 +3,7 @@ echo Building web export for FOREMAN...
 
 if exist game.love del game.love
 echo Creating game.love package...
-powershell -Command "Compress-Archive -Force -Path main.lua, ui.lua, conf.lua, img, sounds -DestinationPath game.zip"
+powershell -Command "Compress-Archive -Force -Path main.lua, ui.lua, conf.lua, story.lua, img, sounds -DestinationPath game.zip"
 if %ERRORLEVEL% NEQ 0 (
     echo Error creating game.zip
     pause
@@ -29,6 +29,11 @@ if %ERRORLEVEL% NEQ 0 (
 powershell -Command "(Get-Content web\index.html) -replace 'width=\"800\" height=\"600\"', 'width=\"520\" height=\"800\"' | Set-Content web\index.html"
 if %ERRORLEVEL% NEQ 0 (
     echo Warning: Failed to update canvas dimensions
+)
+
+powershell -Command "(Get-Content web\index.html) -replace '<h1>.*?</h1>', '' | Set-Content web\index.html"
+if %ERRORLEVEL% NEQ 0 (
+    echo Warning: Failed to remove h1 tag
 )
 
 del game.love
