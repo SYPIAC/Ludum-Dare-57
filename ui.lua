@@ -344,12 +344,16 @@ function ui.drawStatusBar()
     love.graphics.printf(tostring(dangerCount), SCREEN_WIDTH - STATUS_BAR_WIDTH, 270, STATUS_BAR_WIDTH, "center")
 end
 
-function ui.drawFieldGrid()    
+function ui.drawFieldGrid()
+    -- Account for scale in grid range calculation
+    local visibleWidth = FIELD_WIDTH / viewport.scale
+    local visibleHeight = FIELD_HEIGHT / viewport.scale
+    
     -- Calculate visible grid range
     local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
-    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local endCol = startCol + math.ceil(visibleWidth / GRID_CELL_SIZE) + 2
     local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
-    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    local endRow = startRow + math.ceil(visibleHeight / GRID_CELL_HEIGHT) + 2
     
     -- Ensure we're not trying to draw too many cells
     startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow grid crosses to extend GAME_FIELD_WIDTH_EXTENSION cells left
@@ -364,10 +368,10 @@ function ui.drawFieldGrid()
             
             -- Only draw grid points that are within the visible area (not behind status bar)
             if x <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
-                -- Draw + symbol at grid corners
+                -- Draw + symbol at grid corners, scaling the font
                 love.graphics.setColor(unpack(COLORS.grid_symbol))
                 love.graphics.setFont(assets.smallFont)
-                love.graphics.print("+", x - 4, y - 8)
+                love.graphics.print("+", x - 4 * viewport.scale, y - 8 * viewport.scale)
                 
                 -- Check if this tile is outside depth limits
                 local isOutsideDepth = isOutsideDepthLimits(col, row)
@@ -375,7 +379,7 @@ function ui.drawFieldGrid()
                 -- Draw overlay for tiles outside depth limits
                 if isOutsideDepth and isTileEmpty(col, row) then
                     love.graphics.setColor(unpack(COLORS.planned_overlay))
-                    love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                    love.graphics.rectangle("fill", x, y, CARD_WIDTH * viewport.scale, CARD_HEIGHT * viewport.scale)
                 end
                 
                 -- Highlight "alive" tiles with a subtle glow
@@ -389,7 +393,7 @@ function ui.drawFieldGrid()
                 
                 if isAlive then
                     love.graphics.setColor(0, 0.5, 0, 0.2)  -- Subtle green glow
-                    love.graphics.rectangle("fill", x, y, CARD_WIDTH, CARD_HEIGHT)
+                    love.graphics.rectangle("fill", x, y, CARD_WIDTH * viewport.scale, CARD_HEIGHT * viewport.scale)
                 end
                 
                 -- Highlight cell if mouse is over it and a card is being dragged
@@ -398,7 +402,7 @@ function ui.drawFieldGrid()
                     local gx, gy = ui.screenToGrid(mouseX, mouseY)
                     
                     -- Only highlight cells within visible area
-                    if gx == col and gy == row and x + CARD_WIDTH <= FIELD_WIDTH then
+                    if gx == col and gy == row and x + CARD_WIDTH * viewport.scale <= FIELD_WIDTH then
                         love.graphics.setColor(0, 1, 0, 0.5)  -- Green for valid placement
                     end
                 end
@@ -409,11 +413,15 @@ end
 
 -- Draw danger overlays for tiles marked as danger zones
 function ui.drawDangerTileOverlays()
+    -- Account for scale in grid range calculation
+    local visibleWidth = FIELD_WIDTH / viewport.scale
+    local visibleHeight = FIELD_HEIGHT / viewport.scale
+    
     -- Calculate visible grid range
     local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
-    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local endCol = startCol + math.ceil(visibleWidth / GRID_CELL_SIZE) + 2
     local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
-    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    local endRow = startRow + math.ceil(visibleHeight / GRID_CELL_HEIGHT) + 2
     
     -- Ensure we're not trying to draw too many cells
     startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)
@@ -429,9 +437,16 @@ function ui.drawDangerTileOverlays()
             
             -- Only draw if within the visible area (not behind status bar)
             if x <= FIELD_WIDTH and x >= 0 and y >= 40 and y <= FIELD_HEIGHT then
-                -- Use the danger image instead of color overlay
+                -- Use the danger image instead of color overlay, scaling to match viewport scale
                 love.graphics.setColor(1, 1, 1, 0.7) -- Draw at 70% opacity
-                love.graphics.draw(dangerImage, x, y, 0, CARD_WIDTH / dangerImage:getWidth(), CARD_HEIGHT / dangerImage:getHeight())
+                love.graphics.draw(
+                    dangerImage, 
+                    x, 
+                    y, 
+                    0, 
+                    (CARD_WIDTH * viewport.scale) / dangerImage:getWidth(), 
+                    (CARD_HEIGHT * viewport.scale) / dangerImage:getHeight()
+                )
             end
         end
     end
@@ -449,8 +464,8 @@ function ui.drawFieldCards()
             local screenX, screenY = ui.gridToScreen(x, y)
             
             -- Only draw if the card is in view
-            if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
-               screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+            if screenX + CARD_WIDTH * viewport.scale >= 0 and screenX <= FIELD_WIDTH and
+               screenY + CARD_HEIGHT * viewport.scale >= 0 and screenY <= FIELD_HEIGHT then
                 -- Draw the card
                 love.graphics.setColor(1, 1, 1)
                 
@@ -462,10 +477,10 @@ function ui.drawFieldCards()
                 
                 love.graphics.draw(
                     assets.cards[cardData.type], 
-                    screenX + CARD_WIDTH/2, 
-                    screenY + CARD_HEIGHT/2, 
+                    screenX + (CARD_WIDTH * viewport.scale)/2, 
+                    screenY + (CARD_HEIGHT * viewport.scale)/2, 
                     rotation,  -- rotation in radians
-                    1, 1,      -- scale x, scale y
+                    viewport.scale, viewport.scale,  -- scale x, scale y (apply viewport scale)
                     CARD_WIDTH/2,  -- origin x (center of card)
                     CARD_HEIGHT/2  -- origin y (center of card)
                 )
@@ -487,8 +502,8 @@ function ui.drawFieldCards()
             local screenX, screenY = ui.gridToScreen(x, y)
             
             -- Only draw if the card is in view
-            if screenX + CARD_WIDTH >= 0 and screenX <= FIELD_WIDTH and
-               screenY + CARD_HEIGHT >= 0 and screenY <= FIELD_HEIGHT then
+            if screenX + CARD_WIDTH * viewport.scale >= 0 and screenX <= FIELD_WIDTH and
+               screenY + CARD_HEIGHT * viewport.scale >= 0 and screenY <= FIELD_HEIGHT then
                 -- Draw the card
                 love.graphics.setColor(1, 1, 1)
                 
@@ -500,17 +515,17 @@ function ui.drawFieldCards()
                 
                 love.graphics.draw(
                     assets.cards[cardData.type], 
-                    screenX + CARD_WIDTH/2, 
-                    screenY + CARD_HEIGHT/2, 
+                    screenX + (CARD_WIDTH * viewport.scale)/2, 
+                    screenY + (CARD_HEIGHT * viewport.scale)/2, 
                     rotation,  -- rotation in radians
-                    1, 1,      -- scale x, scale y
+                    viewport.scale, viewport.scale,  -- scale x, scale y (apply viewport scale)
                     CARD_WIDTH/2,  -- origin x (center of card)
                     CARD_HEIGHT/2  -- origin y (center of card)
                 )
                 
                 -- Draw gray overlay to indicate planned status
                 love.graphics.setColor(unpack(COLORS.planned_overlay))
-                love.graphics.rectangle("fill", screenX, screenY, CARD_WIDTH, CARD_HEIGHT)
+                love.graphics.rectangle("fill", screenX, screenY, CARD_WIDTH * viewport.scale, CARD_HEIGHT * viewport.scale)
             end
         else
             -- Log or handle invalid position format
@@ -533,11 +548,15 @@ end
 
 -- Draw the appropriate background for the visible field area based on depth
 function ui.drawField()
-    -- Calculate visible grid range
+    -- Account for scale in grid range calculation
+    local visibleWidth = FIELD_WIDTH / viewport.scale
+    local visibleHeight = FIELD_HEIGHT / viewport.scale
+    
+    -- Calculate visible grid range accounting for scale
     local startCol = math.floor(viewport.offsetX / GRID_CELL_SIZE) - 1
-    local endCol = startCol + math.ceil(FIELD_WIDTH / GRID_CELL_SIZE) + 2
+    local endCol = startCol + math.ceil(visibleWidth / GRID_CELL_SIZE) + 2
     local startRow = math.floor(viewport.offsetY / GRID_CELL_HEIGHT) - 1
-    local endRow = startRow + math.ceil(FIELD_HEIGHT / GRID_CELL_HEIGHT) + 2
+    local endRow = startRow + math.ceil(visibleHeight / GRID_CELL_HEIGHT) + 2
     
     -- Ensure we're not trying to draw too many cells
     startCol = math.max(-GAME_FIELD_WIDTH_EXTENSION, startCol)  -- Allow some scrolling left
@@ -547,7 +566,7 @@ function ui.drawField()
     
     -- Draw the background for each visible row section
     for row = startRow, endRow do
-        local screenY = GRID_OFFSET_Y + row * GRID_CELL_HEIGHT - viewport.offsetY
+        local screenY = (GRID_OFFSET_Y + row * GRID_CELL_HEIGHT - viewport.offsetY) * viewport.scale
         
         -- Set color based on biome depth
         if row < SURFACE_LEVEL then
@@ -558,8 +577,8 @@ function ui.drawField()
             love.graphics.setColor(unpack(COLORS.background))
         end
         
-        -- Draw a row strip
-        love.graphics.rectangle("fill", 0, screenY, FIELD_WIDTH, GRID_CELL_HEIGHT + 1)
+        -- Draw a row strip with scale applied to height
+        love.graphics.rectangle("fill", 0, screenY, FIELD_WIDTH, (GRID_CELL_HEIGHT + 1) * viewport.scale)
     end
 end
 
@@ -571,14 +590,16 @@ function ui.gridToScreen(gridX, gridY)
         return 0, 0 -- Return a default value
     end
     
-    return GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX, 
-           GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY
+    -- Apply viewport scale to conversion
+    return (GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX) * viewport.scale, 
+           (GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY) * viewport.scale
 end
 
 -- Convert screen position to grid coordinates
 function ui.screenToGrid(screenX, screenY)
-    return math.floor((screenX - GRID_OFFSET_X + viewport.offsetX) / GRID_CELL_SIZE),
-           math.floor((screenY - GRID_OFFSET_Y + viewport.offsetY) / GRID_CELL_HEIGHT)
+    -- Apply inverse of viewport scale to conversion
+    return math.floor((screenX / viewport.scale - GRID_OFFSET_X + viewport.offsetX) / GRID_CELL_SIZE),
+           math.floor((screenY / viewport.scale - GRID_OFFSET_Y + viewport.offsetY) / GRID_CELL_HEIGHT)
 end
 
 -- These are UI helper functions that might be needed

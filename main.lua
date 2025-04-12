@@ -33,7 +33,9 @@ local viewport = {
     offsetY = 0,
     dragging = false,
     lastMouseX = 0,
-    lastMouseY = 0
+    lastMouseY = 0,
+    scale = 1.0, -- Add scale factor for zooming
+    zoomSpeed = 0.1 -- Control how fast zooming occurs
 }
 
 -- Directions
@@ -344,14 +346,16 @@ end
 
 -- Convert grid coordinates to screen position
 function gridToScreen(gridX, gridY)
-    return GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX, 
-           GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY
+    -- Apply zoom scale to the conversion
+    return (GRID_OFFSET_X + gridX * GRID_CELL_SIZE - viewport.offsetX) * viewport.scale, 
+           (GRID_OFFSET_Y + gridY * GRID_CELL_HEIGHT - viewport.offsetY) * viewport.scale
 end
 
 -- Convert screen position to grid coordinates
 function screenToGrid(screenX, screenY)
-    return math.floor((screenX - GRID_OFFSET_X + viewport.offsetX) / GRID_CELL_SIZE),
-           math.floor((screenY - GRID_OFFSET_Y + viewport.offsetY) / GRID_CELL_HEIGHT)
+    -- Apply inverse of zoom scale to the conversion
+    return math.floor((screenX / viewport.scale + viewport.offsetX - GRID_OFFSET_X) / GRID_CELL_SIZE),
+           math.floor((screenY / viewport.scale + viewport.offsetY - GRID_OFFSET_Y) / GRID_CELL_HEIGHT)
 end
 
 function love.update(dt)
@@ -377,7 +381,17 @@ end
 
 function updateViewport()
     if viewport.dragging then
-        -- Handle viewport dragging logic
+        local mouseX, mouseY = love.mouse.getPosition()
+        local dx = mouseX - viewport.lastMouseX
+        local dy = mouseY - viewport.lastMouseY
+        
+        -- Update viewport offsets based on mouse movement
+        viewport.offsetX = viewport.offsetX - dx
+        viewport.offsetY = viewport.offsetY - dy
+        
+        -- Store current mouse position for next update
+        viewport.lastMouseX = mouseX
+        viewport.lastMouseY = mouseY
     end
 end
 
@@ -1815,4 +1829,33 @@ end
 function isTileEmpty(x, y)
     local pos = y .. "," .. x
     return game.field[pos] == nil and game.plannedCards[pos] == nil
+end
+
+-- Mouse wheel moved callback
+function love.wheelmoved(x, y)
+    -- Don't process when game is over, day over screen is showing, or help menu is visible
+    if game.isGameOver or game.isDayOver or game.helpMenu.visible then
+        return
+    end
+    
+    -- Get current mouse position to use as zoom center
+    local mouseX, mouseY = love.mouse.getPosition()
+    
+    -- Only process scroll wheel in field area
+    if mouseY < FIELD_HEIGHT then
+        -- Calculate grid positions before zoom
+        local gridX, gridY = screenToGrid(mouseX, mouseY)
+        
+        -- Apply zoom factor based on wheel movement
+        -- y > 0 is scrolling up (zoom in), y < 0 is scrolling down (zoom out)
+        local oldScale = viewport.scale
+        viewport.scale = math.max(0.5, math.min(2.0, viewport.scale + y * viewport.zoomSpeed))
+        
+        -- Calculate new grid to screen conversion to keep mouse position at same grid point
+        local newScreenX, newScreenY = gridToScreen(gridX, gridY)
+        
+        -- Adjust viewport offset to maintain the same grid position under mouse
+        viewport.offsetX = viewport.offsetX + (mouseX - newScreenX) / viewport.scale
+        viewport.offsetY = viewport.offsetY + (mouseY - newScreenY) / viewport.scale
+    end
 end
