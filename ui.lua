@@ -106,19 +106,23 @@ function ui.draw()
     
     -- Draw deck space
     love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("fill", SCREEN_WIDTH - 100, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
-    love.graphics.setColor(0, 0, 0)
+    local deckX = SCREEN_WIDTH - 100
+    local deckY = FIELD_HEIGHT + 10
+    love.graphics.draw(assets.deckImage, deckX, deckY)
+    love.graphics.setColor(255, 255, 255)
     love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("deck", SCREEN_WIDTH - 100, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
-    love.graphics.printf("x" .. game.deck.count, SCREEN_WIDTH - 100, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    love.graphics.printf("deck", deckX, deckY + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.deck.count, deckX, deckY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
 
     -- Draw discard space
     love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("fill", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10, CARD_WIDTH, CARD_HEIGHT)
+    local discardX = SCREEN_WIDTH - 48
+    local discardY = FIELD_HEIGHT + 10
+    love.graphics.draw(assets.discardImage, discardX, discardY)
     love.graphics.setColor(0, 0, 0)
-    love.graphics.printf("dis-", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
-    love.graphics.printf("card", SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT/2, CARD_WIDTH, "center")
-    love.graphics.printf("x" .. game.discard.count, SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    love.graphics.printf("dis-", discardX, discardY + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
+    love.graphics.printf("card", discardX, discardY + CARD_HEIGHT/2, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.discard.count, discardX, discardY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
     
     -- Draw draw button
     ui.drawButton(buttons.endShift)
@@ -130,7 +134,7 @@ function ui.draw()
     local drawDifference = futureDrawAmount - currentDrawAmount
 
     -- Display text about the predicted draw amount - moved under deck display and enlarged
-    local infoX = SCREEN_WIDTH - 96 - 40  -- Starting from deck position, extended left
+    local infoX = SCREEN_WIDTH - 100 - 40  -- Starting from deck position, extended left
     local infoY = FIELD_HEIGHT + 20 + CARD_HEIGHT + 30  -- Below deck display
     local infoWidth = 130  -- Wider area for text
 
@@ -245,7 +249,7 @@ function ui.draw()
     
     -- Draw popup for deck or discard if hovering
     if deckHover then
-        ui.drawCardDistributionPopup(game.deck.cards, SCREEN_WIDTH - 96, FIELD_HEIGHT - 10)
+        ui.drawCardDistributionPopup(game.deck.cards, SCREEN_WIDTH - 100, FIELD_HEIGHT - 10)
     elseif discardHover then
         ui.drawCardDistributionPopup(game.discard.cards, SCREEN_WIDTH - 48, FIELD_HEIGHT - 10)
     end
@@ -584,7 +588,7 @@ end
 
 -- Check for hover over deck and discard piles
 function ui.updateHoverStates(mouseX, mouseY)
-    local deckX = SCREEN_WIDTH - 96
+    local deckX = SCREEN_WIDTH - 100
     local discardX = SCREEN_WIDTH - 48
     local deckY = FIELD_HEIGHT + 10
     

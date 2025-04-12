@@ -150,7 +150,9 @@ local assets = {
         shiftEnd1 = nil, -- Sound for end of shift 1
         shiftEnd2 = nil  -- Sound for end of shift 2
     },
-    helpMenu = nil   -- Help menu image
+    helpMenu = nil,   -- Help menu image
+    deckImage = nil,  -- Deck image
+    discardImage = nil  -- Discard image
 }
 
 -- Check if a card can be placed at given grid coordinates
@@ -262,6 +264,10 @@ function love.load()
     
     -- Load help menu image
     assets.helpMenu = love.graphics.newImage("img/help_menu.png")
+    
+    -- Load deck and discard images
+    assets.deckImage = love.graphics.newImage("img/deck.png")
+    assets.discardImage = love.graphics.newImage("img/discard.png")
     
     -- Load sound effects
     assets.sounds.dayStart = love.audio.newSource("sounds/foreman.wav", "static")
