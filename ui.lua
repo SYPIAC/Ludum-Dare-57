@@ -52,6 +52,8 @@ local viewport = nil
 local DIRECTION = nil
 local predictAliveAndHoldCapacity = nil
 local story = require("story")  -- Add the story module requirement
+local cards = require("cards")  -- Add the cards module requirement
+local gameLogic = require("gameLogic")  -- Add the gameLogic module requirement
 
 -- Hover states for deck/discard UI
 local deckHover = false
@@ -61,11 +63,12 @@ local discardHover = false
 local dangerImage = nil -- Image for danger tile overlay
 
 -- Initialize the UI module with references to game state and assets
-function ui.init(gameState, gameAssets, viewportState, directionEnum)
+function ui.init(gameState, gameAssets, viewportState, directionEnum, buttonTable)
     game = gameState
     assets = gameAssets
     viewport = viewportState
     DIRECTION = directionEnum
+    buttons = buttonTable  -- Assign the passed buttons table
     
     -- Load UI specific assets
     dangerImage = love.graphics.newImage("img/danger.png")
@@ -118,20 +121,7 @@ function ui.draw()
     love.graphics.printf("x" .. game.discard.count, SCREEN_WIDTH - 48, FIELD_HEIGHT + 10 + CARD_HEIGHT - 20, CARD_WIDTH, "center")
     
     -- Draw draw button
-    local drawButtonX = SCREEN_WIDTH - 96
-    local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
-    local drawButtonWidth = CARD_WIDTH * 2
-    local drawButtonHeight = 30
-    
-    if game.drawButtonHover then
-        love.graphics.setColor(0.7, 0.7, 1)  -- Light blue when hovering
-    else
-        love.graphics.setColor(0.5, 0.5, 0.9)  -- Blue normally
-    end
-    love.graphics.rectangle("fill", drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
-    love.graphics.setColor(0, 0, 0)
-    love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("END SHIFT (E)", drawButtonX, drawButtonY + 9, drawButtonWidth, "center")
+    ui.drawButton(buttons.endShift)
     
     -- Add predicted draw information below button
     local predictedAliveTiles, predictedHoldCapacity, dangerTiles = predictAliveAndHoldCapacity()
@@ -167,14 +157,12 @@ function ui.draw()
     
     -- Draw cards in hand (except the one being dragged)
     for i, card in ipairs(game.cards) do
-        if card ~= game.dragging then
-            ui.drawCard(card)
-        end
+        ui.drawCard(card, card == game.dragging)
     end
     
     -- Draw the card being dragged (on top of everything)
     if game.dragging then
-        ui.drawCard(game.dragging)
+        ui.drawCard(game.dragging, true)
     end
     
     -- DEBUG: Draw card outline to verify grid alignment
@@ -263,7 +251,7 @@ function ui.draw()
     end
     
     -- Draw help button in top right corner
-    ui.drawHelpButton()
+    ui.drawButton(buttons.help)
     
     -- Draw game over overlay if the game is over
     if game.isGameOver then
@@ -531,32 +519,12 @@ function ui.drawCard(card)
     -- Draw highlight for held cards
     if card.held then
         love.graphics.setColor(unpack(COLORS.hold_border))
-        -- Draw a slightly larger rectangle for the border
         love.graphics.rectangle("line", card.x - 2, card.y - 2, CARD_WIDTH + 4, CARD_HEIGHT + 4, 2, 2)
     end
-    
+
     love.graphics.setColor(1, 1, 1)
-    
-    -- Handle flipped cards (180 degree rotation)
-    if card.flipped then
-        love.graphics.draw(
-            assets.cards[card.type], 
-            card.x + CARD_WIDTH/2, 
-            card.y + CARD_HEIGHT/2,
-            math.pi,  -- 180 degrees in radians
-            1, 1,     -- scale x, scale y
-            CARD_WIDTH/2,  -- origin x (center of card)
-            CARD_HEIGHT/2  -- origin y (center of card)
-        )
-    else
-        love.graphics.draw(assets.cards[card.type], card.x, card.y)
-    end
-    
-    -- For flippable cards, show a small indicator that they can be flipped
-    if game.CARD_PATH_DATA[card.type].flippable then
-        love.graphics.setColor(1, 1, 0, 0.7)  -- Transparent yellow
-        love.graphics.circle("fill", card.x + CARD_WIDTH - 5, card.y + 5, 3)
-    end
+    local rotation = card.flipped and math.pi or 0
+    love.graphics.draw(assets.cards[card.type], card.x + CARD_WIDTH / 2, card.y + CARD_HEIGHT / 2, rotation, 1, 1, CARD_WIDTH / 2, CARD_HEIGHT / 2)
 end
 
 -- Draw the appropriate background for the visible field area based on depth
@@ -611,7 +579,7 @@ end
 
 -- These are UI helper functions that might be needed
 function ui.canPlaceCard(cardType, gridX, gridY, flipped)
-    return game.canPlaceCard(cardType, gridX, gridY, flipped)
+    return gameLogic.canPlaceCard(cardType, gridX, gridY, flipped)
 end
 
 -- Check for hover over deck and discard piles
@@ -835,29 +803,6 @@ function ui.drawPieSegment(centerX, centerY, radius, startAngle, endAngle)
     love.graphics.polygon("fill", vertices)
 end
 
--- Draw help button in the top right corner
-function ui.drawHelpButton()
-    local buttonSize = 30
-    local buttonX = SCREEN_WIDTH - buttonSize - 5
-    local buttonY = 5
-    
-    -- Draw button background
-    if game.helpMenu.buttonHover then
-        love.graphics.setColor(0.7, 0.7, 1, 0.8)  -- Light blue when hovering
-    else
-        love.graphics.setColor(0.5, 0.5, 0.9, 0.7)  -- Blue normally
-    end
-    love.graphics.rectangle("fill", buttonX, buttonY, buttonSize, buttonSize, 5, 5)
-    
-    -- Draw "?" text
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.setFont(assets.font)
-    local text = "?"
-    local textWidth = assets.font:getWidth(text)
-    local textHeight = assets.font:getHeight()
-    love.graphics.print(text, buttonX + buttonSize/2 - textWidth/2, buttonY + buttonSize/2 - textHeight/2)
-end
-
 -- Draw help menu overlay that displays the help_menu.png image
 function ui.drawHelpMenuOverlay()
     -- Semi-transparent black background
@@ -894,15 +839,41 @@ function ui.drawHelpMenuOverlay()
     love.graphics.print(text, screenWidth/2 - textWidth/2, screenHeight - 50)
 end
 
--- Check for hover over help button
-function ui.updateHelpButtonHover(mouseX, mouseY)
-    local buttonSize = 30
-    local buttonX = SCREEN_WIDTH - buttonSize - 5
-    local buttonY = 5
+-- Add a new function to render buttons
+function ui.drawButton(button)
+    -- Set color based on hover state
+    if button.isHovered then
+        love.graphics.setColor(0.7, 0.7, 1)  -- Light blue when hovering
+    else
+        love.graphics.setColor(0.5, 0.5, 0.9)  -- Blue normally
+    end
     
-    -- Check if mouse is over help button
-    game.helpMenu.buttonHover = mouseX >= buttonX and mouseX <= buttonX + buttonSize and
-                                mouseY >= buttonY and mouseY <= buttonY + buttonSize
+    -- Draw rounded rectangle for buttons with radius property
+    if button.radius then
+        love.graphics.rectangle("fill", button.x, button.y, button.width, button.height, button.radius, button.radius)
+    else
+        love.graphics.rectangle("fill", button.x, button.y, button.width, button.height)
+    end
+    
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.setFont(assets.smallFont)
+    
+    -- Check if it's the help button (center the text)
+    if button.text == "?" then
+        local textWidth = assets.font:getWidth(button.text)
+        local textHeight = assets.font:getHeight()
+        love.graphics.setFont(assets.font)
+        love.graphics.print(button.text, button.x + button.width/2 - textWidth/2, button.y + button.height/2 - textHeight/2)
+    else
+        love.graphics.printf(button.text, button.x, button.y + 9, button.width, "center")
+    end
+end
+
+-- Add a new function to scale coordinates
+function ui.scaleCoordinates(x, y)
+    local scaleX = SCREEN_WIDTH / 520  -- Assuming 520 is the base width
+    local scaleY = SCREEN_HEIGHT / 800  -- Assuming 800 is the base height
+    return x * scaleX, y * scaleY
 end
 
 -- Return the UI module

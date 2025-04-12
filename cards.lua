@@ -32,6 +32,27 @@ cards.CARD_TYPES = {
     EMPTY = "empty"
 }
 
+-- Card images mapping
+cards.CARD_IMAGES = {
+    [cards.CARD_TYPES.PATH_1_1A] = "path_1_1a.png",
+    [cards.CARD_TYPES.PATH_1_1B] = "path_1_1b.png",
+    [cards.CARD_TYPES.PATH_2_1A] = "path_2_1a.png",
+    [cards.CARD_TYPES.PATH_2_1B] = "path_2_1b.png",
+    [cards.CARD_TYPES.PATH_2_1C] = "path_2_1c.png",
+    [cards.CARD_TYPES.PATH_2_1D] = "path_2_1d.png",
+    [cards.CARD_TYPES.PATH_3_1A] = "path_3_1a.png",
+    [cards.CARD_TYPES.PATH_3_1B] = "path_3_1b.png",
+    [cards.CARD_TYPES.PATH_4_1] = "path_4_1.png",
+    [cards.CARD_TYPES.PATH_2_2A] = "path_2_2a.png",
+    [cards.CARD_TYPES.PATH_2_2B] = "path_2_2b.png",
+    [cards.CARD_TYPES.PATH_2_2C] = "path_2_2c.png",
+    [cards.CARD_TYPES.PATH_2_2D] = "path_2_2d.png",
+    [cards.CARD_TYPES.PATH_3_3A] = "path_3_3a.png",
+    [cards.CARD_TYPES.PATH_3_3B] = "path_3_3b.png",
+    [cards.CARD_TYPES.PATH_4_4] = "path_4_4.png",
+    [cards.CARD_TYPES.EMPTY] = "empty.png"
+}
+
 -- Card path data structure
 cards.CARD_PATH_DATA = {
     [cards.CARD_TYPES.PATH_1_1A] = {

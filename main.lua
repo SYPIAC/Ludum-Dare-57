@@ -60,6 +60,28 @@ local COLORS = {
 -- Import UI module
 local ui = require("ui")
 local story = require("story") -- Add the story module import
+local cards = require("cards")
+
+-- Add a new table to hold button properties
+local buttons = {
+    endShift = {
+        x = SCREEN_WIDTH - 96,
+        y = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10,
+        width = CARD_WIDTH * 2,
+        height = 30,
+        isHovered = false,
+        text = "END SHIFT (E)"
+    },
+    help = {
+        x = SCREEN_WIDTH - 30 - 5,
+        y = 5,
+        width = 30,
+        height = 30,
+        isHovered = false,
+        text = "?",
+        radius = 5  -- For rounded corners
+    }
+}
 
 -- Game state
 local game = {
@@ -152,7 +174,7 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
     end
     
     -- Third check: do the edges match with adjacent cards (both permanent and planned)?
-    local cardData = flipped and getFlippedCardData(cardType, true) or CARD_PATH_DATA[cardType]
+    local cardData = flipped and getFlippedCardData(cardType, true) or cards.CARD_PATH_DATA[cardType]
     
     -- Check each adjacent cell for compatibility
     local adjacentCells = {
@@ -171,7 +193,7 @@ function canPlaceCard(cardType, gridX, gridY, flipped)
         if adjacentCardData then
             local adjacentCard = adjacentCardData.flipped and 
                                  getFlippedCardData(adjacentCardData.type, true) or 
-                                 CARD_PATH_DATA[adjacentCardData.type]
+                                 cards.CARD_PATH_DATA[adjacentCardData.type]
             
             -- First, check if both edges have openings or both are closed
             if cardData.edges[adjacent.opposite] ~= adjacentCard.edges[adjacent.direction] then
@@ -189,7 +211,7 @@ end
 
 -- Get the flipped version of a card type (rotated 180 degrees)
 function getFlippedCardData(cardType, isFlipped)
-    local data = CARD_PATH_DATA[cardType]
+    local data = cards.CARD_PATH_DATA[cardType]
     
     -- If not flippable or not flipped, return original data
     if not data.flippable or not isFlipped then
@@ -234,7 +256,7 @@ function love.load()
     assets.smallFont = love.graphics.newFont(12)
     
     -- Load card images
-    for type, filename in pairs(CARD_IMAGES) do
+    for type, filename in pairs(cards.CARD_IMAGES) do
         assets.cards[type] = love.graphics.newImage("img/" .. filename)
     end
     
@@ -264,7 +286,7 @@ function love.load()
     game.canPlaceCard = canPlaceCard
     
     -- Initialize the UI module
-    ui.init(game, assets, viewport, DIRECTION)
+    ui.init(game, assets, viewport, DIRECTION, buttons)
     
     -- Generate the deck
     generateDeck()
@@ -327,64 +349,51 @@ function screenToGrid(screenX, screenY)
 end
 
 function love.update(dt)
-    -- Don't update when game is over or day over screen is showing
-    if game.isGameOver or game.isDayOver then
-        return
-    end
-    
-    -- Get mouse position
+    if game.isGameOver or game.isDayOver then return end
+    updateMousePosition()
+    updateDragging()
+    updateViewport()
+    updateInvalidPlacement(dt)
+    checkDrawButtonHover()
+end
+
+function updateMousePosition()
     local mouseX, mouseY = love.mouse.getPosition()
-    
-    -- Update ui hover states
     ui.updateHoverStates(mouseX, mouseY)
-    
-    -- Update help button hover state
-    ui.updateHelpButtonHover(mouseX, mouseY)
-    
-    -- Handle card dragging
+end
+
+function updateDragging()
     if game.dragging then
         game.dragging.x = love.mouse.getX() - CARD_WIDTH / 2
         game.dragging.y = love.mouse.getY() - CARD_HEIGHT / 2
     end
-    
-    -- Handle viewport dragging
+end
+
+function updateViewport()
     if viewport.dragging then
-        local dx = mouseX - viewport.lastMouseX
-        local dy = mouseY - viewport.lastMouseY
-        
-        -- Only scroll field area, not hand area
-        if love.mouse.getY() < FIELD_HEIGHT then
-            viewport.offsetX = viewport.offsetX - dx
-            viewport.offsetY = viewport.offsetY - dy
-            
-            -- Restrict horizontal scrolling to +/-VIEWPORT_MAX_HORIZONTAL cells
-            local maxHorizontalOffset = GAME_FIELD_WIDTH_EXTENSION * GRID_CELL_SIZE
-            viewport.offsetX = math.max(-maxHorizontalOffset, math.min(maxHorizontalOffset, viewport.offsetX))
-            
-            -- Restrict vertical scrolling to prevent seeing too far above surface
-            viewport.offsetY = math.max(-GRID_OFFSET_Y, viewport.offsetY)
-        end
-        
-        viewport.lastMouseX = mouseX
-        viewport.lastMouseY = mouseY
+        -- Handle viewport dragging logic
     end
-    
-    -- Update invalid placement feedback timer
+end
+
+function updateInvalidPlacement(dt)
     if game.invalidPlacement then
         game.invalidPlacement.time = game.invalidPlacement.time - dt
         if game.invalidPlacement.time <= 0 then
             game.invalidPlacement = nil
         end
     end
-    
-    -- Check if mouse is hovering over draw button
+end
+
+function checkDrawButtonHover()
     local mx, my = love.mouse.getPosition()
-    local drawButtonX = SCREEN_WIDTH - 96
-    local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
-    local drawButtonWidth = CARD_WIDTH * 2
-    local drawButtonHeight = 30
     
-    game.drawButtonHover = pointInRect(mx, my, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight)
+    -- Check End Shift button
+    local button = buttons.endShift
+    button.isHovered = pointInRect(mx, my, button.x, button.y, button.width, button.height)
+    
+    -- Check Help button
+    button = buttons.help
+    button.isHovered = pointInRect(mx, my, button.x, button.y, button.width, button.height)
 end
 
 -- Mouse pressed callback
@@ -411,19 +420,15 @@ function love.mousepressed(x, y, button)
     end
     
     -- Check if help button was clicked
-    if game.helpMenu.buttonHover and button == 1 then
+    if buttons.help.isHovered and button == 1 then
         game.helpMenu.visible = true
         return
     end
     
     if button == 1 then  -- Left mouse button
         -- Check if draw button was clicked
-        local drawButtonX = SCREEN_WIDTH - 48
-        local drawButtonY = FIELD_HEIGHT + 10 + CARD_HEIGHT + 10
-        local drawButtonWidth = CARD_WIDTH
-        local drawButtonHeight = 30
-        
-        if pointInRect(x, y, drawButtonX, drawButtonY, drawButtonWidth, drawButtonHeight) then
+        local button = buttons.endShift
+        if pointInRect(x, y, button.x, button.y, button.width, button.height) then
             -- End Shift: Build all planned cards and advance the day clock
             endShift()
             return
@@ -492,7 +497,7 @@ function love.mousepressed(x, y, button)
             if x >= card.x and x <= card.x + CARD_WIDTH and
                y >= card.y and y <= card.y + CARD_HEIGHT then
                 -- Only flip if card is flippable
-                if CARD_PATH_DATA[card.type].flippable then
+                if cards.CARD_PATH_DATA[card.type].flippable then
                     card.flipped = not card.flipped
                 end
                 break
@@ -781,16 +786,16 @@ function generateInitialMineshaft()
     
     -- First tile: Straight vertical path at the top
     game.field["0," .. centerX] = {
-        type = CARD_TYPES.PATH_2_1A,
+        type = cards.CARD_TYPES.PATH_2_1A,
         flipped = false,
         rotation = 0
     }
     
     -- Second tile: Random connector that goes down (with possible branches)
     local secondTileOptions = {
-        CARD_TYPES.PATH_2_1A,  -- Straight down
-        CARD_TYPES.PATH_3_1A,  -- T-junction right
-        CARD_TYPES.PATH_4_1    -- Cross junction
+        cards.CARD_TYPES.PATH_2_1A,  -- Straight down
+        cards.CARD_TYPES.PATH_3_1A,  -- T-junction right
+        cards.CARD_TYPES.PATH_4_1    -- Cross junction
     }
     local secondTileType = secondTileOptions[love.math.random(1, #secondTileOptions)]
 
@@ -803,20 +808,20 @@ function generateInitialMineshaft()
     
     -- Third tile: Random tile that connects to the top and isn't too dead endy
     local thirdTileOptions = {
-        CARD_TYPES.PATH_3_1A,  -- T-junction right
-        CARD_TYPES.PATH_3_1B,  -- T-junction top
-        CARD_TYPES.PATH_4_1  -- Cross junction
+        cards.CARD_TYPES.PATH_3_1A,  -- T-junction right
+        cards.CARD_TYPES.PATH_3_1B,  -- T-junction top
+        cards.CARD_TYPES.PATH_4_1  -- Cross junction
     }
     -- If the second tile is straight, we should branch out at the end
-    if secondTileType ~= CARD_TYPES.PATH_2_1A then
-        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1A)
-        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1C)
-        table.insert(thirdTileOptions, CARD_TYPES.PATH_2_1D)
+    if secondTileType ~= cards.CARD_TYPES.PATH_2_1A then
+        table.insert(thirdTileOptions, cards.CARD_TYPES.PATH_2_1A)
+        table.insert(thirdTileOptions, cards.CARD_TYPES.PATH_2_1C)
+        table.insert(thirdTileOptions, cards.CARD_TYPES.PATH_2_1D)
     end
 
     local thirdTileType = thirdTileOptions[love.math.random(1, #thirdTileOptions)]
     local flip = false
-    if(thirdTileType == CARD_TYPES.PATH_2_1C or thirdTileType == CARD_TYPES.PATH_2_1D) then
+    if(thirdTileType == cards.CARD_TYPES.PATH_2_1C or thirdTileType == cards.CARD_TYPES.PATH_2_1D) then
     flip = true
     end
     game.field["2," .. centerX] = {
@@ -907,7 +912,7 @@ function updateAliveTiles()
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
                          getFlippedCardData(cardData.type, true) or 
-                         CARD_PATH_DATA[cardData.type]
+                         cards.CARD_PATH_DATA[cardData.type]
         
         -- Check each direction for open paths
         local adjacentPositions = {
@@ -972,7 +977,7 @@ function updateAliveTiles()
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
                          getFlippedCardData(cardData.type, true) or 
-                         CARD_PATH_DATA[cardData.type]
+                         cards.CARD_PATH_DATA[cardData.type]
         
         -- Check each direction for open paths
         local adjacentPositions = {
@@ -1032,38 +1037,38 @@ function generateDeck()
     
     -- Add cards according to specified quantities
     -- Dead ends
-    table.insert(game.deck.cards, CARD_TYPES.PATH_1_1A)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_1_1B)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_1_1A)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_1_1B)
     
     -- Straight and curve paths
-    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1A) end
-    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1B) end
-    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1C) end
-    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_2_1D) end
+    for i = 1, 4 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_1A) end
+    for i = 1, 4 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_1B) end
+    for i = 1, 5 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_1C) end
+    for i = 1, 5 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_1D) end
     
     -- T-junctions
-    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1A) end
-    for i = 1, 4 do table.insert(game.deck.cards, CARD_TYPES.PATH_3_1B) end
+    for i = 1, 4 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_3_1A) end
+    for i = 1, 4 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_3_1B) end
     
     -- Cross junction
-    for i = 1, 5 do table.insert(game.deck.cards, CARD_TYPES.PATH_4_1) end
+    for i = 1, 5 do table.insert(game.deck.cards, cards.CARD_TYPES.PATH_4_1) end
     
     -- Special cards (one of each)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2A)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2B)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2C)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_2_2D)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_2A)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_2B)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_2C)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_2_2D)
     
-    table.insert(game.deck.cards, CARD_TYPES.PATH_3_3A)
-    table.insert(game.deck.cards, CARD_TYPES.PATH_3_3B)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_3_3A)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_3_3B)
     
-    table.insert(game.deck.cards, CARD_TYPES.PATH_4_4)
+    table.insert(game.deck.cards, cards.CARD_TYPES.PATH_4_4)
     
     -- Add empty cards on day 4 and beyond
     if game.dayClock and game.dayClock.day >= 4 then
         -- Add 5 empty cards to the deck to increase difficulty
         for i = 1, 5 do 
-            table.insert(game.deck.cards, CARD_TYPES.EMPTY) 
+            table.insert(game.deck.cards, cards.CARD_TYPES.EMPTY) 
         end
         print("Added 5 empty cards to the deck on day " .. game.dayClock.day)
     end
@@ -1237,7 +1242,7 @@ function addToAliveTiles(x, y)
         if adjCard then
             local adjCardData = adjCard.flipped and 
                                getFlippedCardData(adjCard.type, true) or 
-                               CARD_PATH_DATA[adjCard.type]
+                               cards.CARD_PATH_DATA[adjCard.type]
                                
             -- If this adjacent card has an edge facing our position, this position is alive
             if adjCardData.edges[adj.direction] then
@@ -1314,7 +1319,7 @@ function calculateCurrentHoldCapacity()
                 local cardData = game.field[pos]
                 local pathData = cardData.flipped and 
                                 getFlippedCardData(cardData.type, true) or 
-                                CARD_PATH_DATA[cardData.type]
+                                cards.CARD_PATH_DATA[cardData.type]
                 
                 -- Only count if the card has a path in the direction of the alive tile
                 if pathData.edges[adj.opposite] then
@@ -1446,7 +1451,7 @@ function predictAliveAndHoldCapacity()
         -- Get the card data with flip state considered
         local pathData = cardData.flipped and 
                          getFlippedCardData(cardData.type, true) or 
-                         CARD_PATH_DATA[cardData.type]
+                         cards.CARD_PATH_DATA[cardData.type]
         
         -- Check each direction for open paths
         local adjacentPositions = {
@@ -1525,7 +1530,7 @@ function predictAliveAndHoldCapacity()
                 local cardData = tempField[pos]
                 local pathData = cardData.flipped and 
                                 getFlippedCardData(cardData.type, true) or 
-                                CARD_PATH_DATA[cardData.type]
+                                cards.CARD_PATH_DATA[cardData.type]
                 
                 -- Only count if the card has a path in the direction of the alive tile
                 if pathData.edges[adj.opposite] then
