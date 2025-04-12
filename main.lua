@@ -1631,7 +1631,8 @@ function handleDayOverClick()
     else
         -- If this is day 1 and the initial story, set up the help menu to be shown after
         if game.dayClock.day == 1 and game.isInitialStory then
-            game.helpMenu.visible = true
+            -- Don't show it for this build though since it's annoying to click through
+            -- game.helpMenu.visible = true
             game.helpMenu.showAfterStory = false  -- Only show once
         end
         
