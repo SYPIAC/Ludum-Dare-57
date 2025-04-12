@@ -377,7 +377,25 @@ end
 
 function updateViewport()
     if viewport.dragging then
-        -- Handle viewport dragging logic
+        local mouseX, mouseY = love.mouse.getPosition()
+        local dx = mouseX - viewport.lastMouseX
+        local dy = mouseY - viewport.lastMouseY
+        
+        -- Only scroll field area, not hand area
+        if love.mouse.getY() < FIELD_HEIGHT then
+            viewport.offsetX = viewport.offsetX - dx
+            viewport.offsetY = viewport.offsetY - dy
+            
+            -- Restrict horizontal scrolling to +/-VIEWPORT_MAX_HORIZONTAL cells
+            local maxHorizontalOffset = GAME_FIELD_WIDTH_EXTENSION * GRID_CELL_SIZE
+            viewport.offsetX = math.max(-maxHorizontalOffset, math.min(maxHorizontalOffset, viewport.offsetX))
+            
+            -- Restrict vertical scrolling to prevent seeing too far above surface
+            viewport.offsetY = math.max(-GRID_OFFSET_Y, viewport.offsetY)
+        end
+        
+        viewport.lastMouseX = mouseX
+        viewport.lastMouseY = mouseY
     end
 end
 
