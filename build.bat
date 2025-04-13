@@ -36,3 +36,6 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo Build complete! Executable is in the bin folder.
+
+echo Starting game...
+start "" "bin\HelloWorld.exe"
