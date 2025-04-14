@@ -152,7 +152,8 @@ local assets = {
     },
     helpMenu = nil,   -- Help menu image
     deckImage = nil,  -- Deck image
-    discardImage = nil  -- Discard image
+    discardImage = nil,  -- Discard image
+    backgroundImage = nil  -- Background image for tiling
 }
 
 -- Check if a card can be placed at given grid coordinates
@@ -268,6 +269,9 @@ function love.load()
     -- Load deck and discard images
     assets.deckImage = love.graphics.newImage("img/deck.png")
     assets.discardImage = love.graphics.newImage("img/discard.png")
+    
+    -- Load background image
+    assets.backgroundImage = love.graphics.newImage("img/ui/background.jpg")
     
     -- Load sound effects
     assets.sounds.dayStart = love.audio.newSource("sounds/foreman.wav", "static")

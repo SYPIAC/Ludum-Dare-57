@@ -37,6 +37,8 @@ local COLORS = {
     surface = {0.6, 0.4, 0.2},     -- Brown for surface (above ground)
     deep_mine = {0.3, 0.3, 0.35},  -- Grayish for deep mine
     hold_border = {1, 0.8, 0},     -- Gold for held card border
+    hand_card_border = {1, 1, 1},  -- White for card border in hand
+    golden_field_border = {219/255, 202/255, 135/255}, -- Golden border around play field
     clock_face = {1, 1, 0},        -- Yellow for clock face
     clock_segment_used = {0, 0, 0}, -- Black for used clock segments
     clock_dividers = {0.5, 0.5, 0.5}, -- Gray for clock segment dividers
@@ -61,6 +63,11 @@ local discardHover = false
 
 -- UI assets
 local dangerImage = nil -- Image for danger tile overlay
+local vignetteImage = nil -- Vignette image for bottom right corner
+local tlVignetteImage = nil -- Vignette image for top left corner
+local trVignetteImage = nil -- Vignette image for top right corner
+local blVignetteImage = nil -- Vignette image for bottom left corner
+local backgroundMapImage = nil -- Background map image for tiling over game field
 
 -- Initialize the UI module with references to game state and assets
 function ui.init(gameState, gameAssets, viewportState, directionEnum, buttonTable)
@@ -72,12 +79,41 @@ function ui.init(gameState, gameAssets, viewportState, directionEnum, buttonTabl
     
     -- Load UI specific assets
     dangerImage = love.graphics.newImage("img/danger.png")
+    vignetteImage = love.graphics.newImage("img/ui/BRVignette.png")
+    tlVignetteImage = love.graphics.newImage("img/ui/TLVignette.png")
+    trVignetteImage = love.graphics.newImage("img/ui/TRVignette.png")
+    blVignetteImage = love.graphics.newImage("img/ui/BLVignette.png")
+    backgroundMapImage = love.graphics.newImage("img/ui/background_map.png")
     
     -- Set up references to any prediction functions
     predictAliveAndHoldCapacity = _G.predictAliveAndHoldCapacity
     
     -- Initialize the story module
     story.init(game, assets)
+end
+
+-- Helper function to draw a tiled background image
+function ui.drawTiledBackground(x, y, width, height)
+    if not assets.backgroundImage then return end
+    
+    love.graphics.setColor(1, 1, 1)
+    local imgWidth = assets.backgroundImage:getWidth()
+    local imgHeight = assets.backgroundImage:getHeight()
+    
+    -- Calculate how many tiles we need in each direction
+    local tilesX = math.ceil(width / imgWidth)
+    local tilesY = math.ceil(height / imgHeight)
+    
+    -- Draw the background tiles
+    for tileX = 0, tilesX - 1 do
+        for tileY = 0, tilesY - 1 do
+            love.graphics.draw(
+                assets.backgroundImage,
+                x + tileX * imgWidth,
+                y + tileY * imgHeight
+            )
+        end
+    end
 end
 
 -- Main drawing function
@@ -88,6 +124,9 @@ function ui.draw()
     -- Draw the field with appropriate biome backgrounds
     ui.drawField()
     
+    -- Draw the tiled background map over the game field
+    ui.drawTiledGameField()
+    
     -- Draw the field grid
     ui.drawFieldGrid()
     
@@ -97,72 +136,20 @@ function ui.draw()
     -- Draw danger tile overlays (on top of cards)
     ui.drawDangerTileOverlays()
     
+    -- Draw golden border around the play field
+    love.graphics.setColor(unpack(COLORS.golden_field_border))
+    love.graphics.setLineWidth(3)
+    love.graphics.rectangle("line", 0, 40, FIELD_WIDTH, FIELD_HEIGHT - 40)
+    love.graphics.setLineWidth(1)
+    
+    -- Draw vignettes in all four corners of the game field
+    ui.drawVignettes()
+    
     -- Draw status bar
     ui.drawStatusBar()
     
-    -- Draw hand area background
-    love.graphics.setColor(unpack(COLORS.hand_bg))
-    love.graphics.rectangle("fill", 0, FIELD_HEIGHT, SCREEN_WIDTH, HAND_HEIGHT)
-    
-    -- Draw deck space
-    love.graphics.setColor(1, 1, 1)
-    local deckX = SCREEN_WIDTH - 100
-    local deckY = FIELD_HEIGHT + 10
-    love.graphics.draw(assets.deckImage, deckX, deckY)
-    love.graphics.setColor(255, 255, 255)
-    love.graphics.setFont(assets.smallFont)
-    love.graphics.printf("deck", deckX, deckY + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
-    love.graphics.printf("x" .. game.deck.count, deckX, deckY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
-
-    -- Draw discard space
-    love.graphics.setColor(1, 1, 1)
-    local discardX = SCREEN_WIDTH - 48
-    local discardY = FIELD_HEIGHT + 10
-    love.graphics.draw(assets.discardImage, discardX, discardY)
-    love.graphics.setColor(0, 0, 0)
-    love.graphics.printf("dis-", discardX, discardY + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
-    love.graphics.printf("card", discardX, discardY + CARD_HEIGHT/2, CARD_WIDTH, "center")
-    love.graphics.printf("x" .. game.discard.count, discardX, discardY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
-    
-    -- Draw draw button
-    ui.drawButton(buttons.endShift)
-    
-    -- Add predicted draw information below button
-    local predictedAliveTiles, predictedHoldCapacity, dangerTiles = predictAliveAndHoldCapacity()
-    local currentDrawAmount = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
-    local futureDrawAmount = game.calculateDrawAmount(predictedAliveTiles)
-    local drawDifference = futureDrawAmount - currentDrawAmount
-
-    -- Display text about the predicted draw amount - moved under deck display and enlarged
-    local infoX = SCREEN_WIDTH - 100 - 40  -- Starting from deck position, extended left
-    local infoY = FIELD_HEIGHT + 20 + CARD_HEIGHT + 30  -- Below deck display
-    local infoWidth = 130  -- Wider area for text
-
-    -- Use larger font
-    love.graphics.setFont(assets.font)
-    love.graphics.setColor(unpack(COLORS.text))
-    love.graphics.printf("You will draw", infoX, infoY, infoWidth, "center")
-
-    -- Draw amount with color-coded difference
-    local numberY = infoY + 25
-    love.graphics.printf(tostring(futureDrawAmount), infoX + 0, numberY, 30, "right")
-
-    if drawDifference > 0 then
-        love.graphics.setColor(unpack(COLORS.positive))
-        love.graphics.printf("(+" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
-    elseif drawDifference < 0 then
-        love.graphics.setColor(unpack(COLORS.negative))
-        love.graphics.printf("(" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
-    end
-
-    -- Add "cards" text after the numbers
-    love.graphics.setColor(unpack(COLORS.text))
-    love.graphics.printf("cards", infoX + 30, numberY, infoWidth, "center")
-    
-    -- Draw cards in hand (except the one being dragged)
-    for i, card in ipairs(game.cards) do
-        ui.drawCard(card, card == game.dragging)
-    end
+    -- Draw hand area
+    ui.drawHandArea()
     
     -- Draw the card being dragged (on top of everything)
     if game.dragging then
@@ -273,10 +260,79 @@ function ui.draw()
     end
 end
 
+-- Function to draw the hand area
+function ui.drawHandArea()
+    -- Draw tiled background for hand area
+    ui.drawTiledBackground(0, FIELD_HEIGHT, SCREEN_WIDTH, HAND_HEIGHT)
+    
+    -- Draw deck space
+    love.graphics.setColor(1, 1, 1)
+    local deckX = SCREEN_WIDTH - 100
+    local deckY = FIELD_HEIGHT + 10
+    love.graphics.draw(assets.deckImage, deckX, deckY)
+    love.graphics.setColor(255, 255, 255)
+    love.graphics.setFont(assets.smallFont)
+    love.graphics.printf("deck", deckX, deckY + CARD_HEIGHT/2 - 10, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.deck.count, deckX, deckY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+
+    -- Draw discard space
+    love.graphics.setColor(1, 1, 1)
+    local discardX = SCREEN_WIDTH - 48
+    local discardY = FIELD_HEIGHT + 10
+    love.graphics.draw(assets.discardImage, discardX, discardY)
+    love.graphics.setColor(0, 0, 0)
+    love.graphics.printf("dis-", discardX, discardY + CARD_HEIGHT/2 - 20, CARD_WIDTH, "center")
+    love.graphics.printf("card", discardX, discardY + CARD_HEIGHT/2, CARD_WIDTH, "center")
+    love.graphics.printf("x" .. game.discard.count, discardX, discardY + CARD_HEIGHT - 20, CARD_WIDTH, "center")
+    
+    -- Draw draw button
+    ui.drawButton(buttons.endShift)
+    
+    -- Add predicted draw information below button
+    local predictedAliveTiles, predictedHoldCapacity, dangerTiles = predictAliveAndHoldCapacity()
+    local currentDrawAmount = game.calculateDrawAmount(game.shiftStartAliveTilesCount)
+    local futureDrawAmount = game.calculateDrawAmount(predictedAliveTiles)
+    local drawDifference = futureDrawAmount - currentDrawAmount
+
+    -- Display text about the predicted draw amount - moved under deck display and enlarged
+    local infoX = SCREEN_WIDTH - 100 - 40  -- Starting from deck position, extended left
+    local infoY = FIELD_HEIGHT + 20 + CARD_HEIGHT + 30  -- Below deck display
+    local infoWidth = 130  -- Wider area for text
+
+    -- Use larger font
+    love.graphics.setFont(assets.font)
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("You will draw", infoX, infoY, infoWidth, "center")
+
+    -- Draw amount with color-coded difference
+    local numberY = infoY + 25
+    love.graphics.printf(tostring(futureDrawAmount), infoX + 0, numberY, 30, "right")
+
+    if drawDifference > 0 then
+        love.graphics.setColor(unpack(COLORS.positive))
+        love.graphics.printf("(+" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
+    elseif drawDifference < 0 then
+        love.graphics.setColor(unpack(COLORS.negative))
+        love.graphics.printf("(" .. drawDifference .. ")", infoX + 35, numberY, 40, "left")
+    end
+
+    -- Add "cards" text after the numbers
+    love.graphics.setColor(unpack(COLORS.text))
+    love.graphics.printf("cards", infoX + 30, numberY, infoWidth, "center")
+    
+    -- Draw cards in hand (except the one being dragged)
+    for i, card in ipairs(game.cards) do
+        ui.drawCard(card, card == game.dragging)
+    end
+end
+
 -- Function to draw the status bar
 function ui.drawStatusBar()
-    -- Draw status bar on the right
-    love.graphics.setColor(unpack(COLORS.status_bar))
+    -- Draw tiled background for status bar
+    ui.drawTiledBackground(SCREEN_WIDTH - STATUS_BAR_WIDTH, 40, STATUS_BAR_WIDTH, FIELD_HEIGHT - 40)
+    
+    -- Draw semi-transparent overlay for better readability
+    love.graphics.setColor(COLORS.status_bar[1], COLORS.status_bar[2], COLORS.status_bar[3], 0.3)
     love.graphics.rectangle("fill", SCREEN_WIDTH - STATUS_BAR_WIDTH, 40, STATUS_BAR_WIDTH, FIELD_HEIGHT - 40)
     
     -- Draw "FOREMAN DAY X" text
@@ -520,7 +576,11 @@ function ui.drawFieldCards()
 end
 
 function ui.drawCard(card)
-    -- Draw highlight for held cards
+    -- Draw white border around all cards in hand
+    love.graphics.setColor(unpack(COLORS.hand_card_border))
+    love.graphics.rectangle("line", card.x - 2, card.y - 2, CARD_WIDTH + 4, CARD_HEIGHT + 4, 2, 2)
+    
+    -- Draw highlight for held cards (drawn on top of the white border)
     if card.held then
         love.graphics.setColor(unpack(COLORS.hold_border))
         love.graphics.rectangle("line", card.x - 2, card.y - 2, CARD_WIDTH + 4, CARD_HEIGHT + 4, 2, 2)
@@ -878,6 +938,77 @@ function ui.scaleCoordinates(x, y)
     local scaleX = SCREEN_WIDTH / 520  -- Assuming 520 is the base width
     local scaleY = SCREEN_HEIGHT / 800  -- Assuming 800 is the base height
     return x * scaleX, y * scaleY
+end
+
+-- Function to draw all vignettes in their respective corners
+function ui.drawVignettes()
+    love.graphics.setColor(1, 1, 1)
+    
+    -- Draw top left vignette
+    if tlVignetteImage then
+        love.graphics.draw(tlVignetteImage, 0, 40, 
+                         0, -- rotation
+                         1, 1) -- scale
+    end
+    
+    -- Draw top right vignette
+    if trVignetteImage then
+        love.graphics.draw(trVignetteImage, FIELD_WIDTH, 40, 
+                         0, -- rotation
+                         1, 1, -- scale
+                         trVignetteImage:getWidth(), 0) -- origin at top right
+    end
+    
+    -- Draw bottom left vignette
+    if blVignetteImage then
+        love.graphics.draw(blVignetteImage, 0, FIELD_HEIGHT, 
+                         0, -- rotation
+                         1, 1, -- scale
+                         0, blVignetteImage:getHeight()) -- origin at bottom left
+    end
+    
+    -- Draw bottom right vignette
+    if vignetteImage then
+        love.graphics.draw(vignetteImage, FIELD_WIDTH, FIELD_HEIGHT, 
+                         0, -- rotation
+                         1, 1, -- scale
+                         vignetteImage:getWidth(), vignetteImage:getHeight()) -- origin at bottom right
+    end
+end
+
+-- Function to draw a tiled background map over the game field
+function ui.drawTiledGameField()
+    if not backgroundMapImage then return end
+    
+    love.graphics.setColor(1, 1, 1, 0.4)  -- Draw with 40% opacity to blend with the biome backgrounds
+    
+    local imgWidth = backgroundMapImage:getWidth()
+    local imgHeight = backgroundMapImage:getHeight()
+    
+    -- Calculate visible field area
+    local fieldStartX = 0
+    local fieldStartY = 40 -- Below top bar
+    local fieldWidth = FIELD_WIDTH
+    local fieldHeight = FIELD_HEIGHT - 40
+    
+    -- Calculate how many tiles we need in each direction
+    local tilesX = math.ceil(fieldWidth / imgWidth) + 1 -- +1 for scrolling
+    local tilesY = math.ceil(fieldHeight / imgHeight) + 1 -- +1 for scrolling
+    
+    -- Calculate offset for scrolling
+    local offsetX = -math.floor(viewport.offsetX % imgWidth)
+    local offsetY = -math.floor(viewport.offsetY % imgHeight)
+    
+    -- Draw the background tiles
+    for tileX = 0, tilesX - 1 do
+        for tileY = 0, tilesY - 1 do
+            love.graphics.draw(
+                backgroundMapImage,
+                fieldStartX + offsetX + tileX * imgWidth,
+                fieldStartY + offsetY + tileY * imgHeight
+            )
+        end
+    end
 end
 
 -- Return the UI module
