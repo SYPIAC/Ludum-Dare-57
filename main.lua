@@ -139,7 +139,9 @@ end
 
 -- Game assets
 local assets = {
-    cards = {},      -- Card images
+    cards = {},      -- Card images (original, will be removed after changes)
+    gryazCards = {}, -- Card images for the surface layer (from gryaz folder)
+    stoneCards = {}, -- Card images for the deep mine layer (from stone folder)
     font = nil,      -- Main font
     smallFont = nil, -- Small font for UI elements
     sounds = {       -- Sound effects
@@ -258,9 +260,19 @@ function love.load()
     assets.font = love.graphics.newFont(16)
     assets.smallFont = love.graphics.newFont(12)
     
-    -- Load card images
+    -- Load card images from gryaz folder (for surface layer)
     for type, filename in pairs(cards.CARD_IMAGES) do
-        assets.cards[type] = love.graphics.newImage("img/" .. filename)
+        assets.gryazCards[type] = love.graphics.newImage("img/gryaz/" .. filename)
+    end
+    
+    -- Load card images from stone folder (for deep mine layer)
+    for type, filename in pairs(cards.CARD_IMAGES) do
+        assets.stoneCards[type] = love.graphics.newImage("img/stone/" .. filename)
+    end
+    
+    -- Keep backward compatibility for now to avoid breaking code
+    for type, filename in pairs(cards.CARD_IMAGES) do
+        assets.cards[type] = assets.gryazCards[type]
     end
     
     -- Load help menu image

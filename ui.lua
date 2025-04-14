@@ -516,8 +516,18 @@ function ui.drawFieldCards()
                     rotation = rotation + math.pi
                 end
                 
+                -- Choose the appropriate card image based on the layer (y-coordinate)
+                local cardImage
+                if y >= DEEP_MINE_LEVEL then
+                    -- Deep mine layer (stone)
+                    cardImage = assets.stoneCards[cardData.type]
+                else
+                    -- Surface layer (gryaz)
+                    cardImage = assets.gryazCards[cardData.type]
+                end
+                
                 love.graphics.draw(
-                    assets.cards[cardData.type], 
+                    cardImage,
                     screenX + CARD_WIDTH/2, 
                     screenY + CARD_HEIGHT/2, 
                     rotation,  -- rotation in radians
@@ -554,8 +564,18 @@ function ui.drawFieldCards()
                     rotation = rotation + math.pi
                 end
                 
+                -- Choose the appropriate card image based on the layer (y-coordinate)
+                local cardImage
+                if y >= DEEP_MINE_LEVEL then
+                    -- Deep mine layer (stone)
+                    cardImage = assets.stoneCards[cardData.type]
+                else
+                    -- Surface layer (gryaz)
+                    cardImage = assets.gryazCards[cardData.type]
+                end
+                
                 love.graphics.draw(
-                    assets.cards[cardData.type], 
+                    cardImage,
                     screenX + CARD_WIDTH/2, 
                     screenY + CARD_HEIGHT/2, 
                     rotation,  -- rotation in radians
